@@ -38,8 +38,10 @@ function makePeer() {
   });
 }
 
-export async function createHostRoom(): Promise<{ roomId: string; peer: Peer }> {
-  const peer = makePeer();
+export async function createHostRoom(opts?: {
+  desiredRoomId?: string;
+}): Promise<{ roomId: string; peer: Peer }> {
+  const peer = opts?.desiredRoomId ? new Peer(opts.desiredRoomId, { debug: 1 }) : makePeer();
   const roomId = await new Promise<string>((resolve, reject) => {
     peer.on("open", (id) => resolve(id));
     peer.on("error", (e) => reject(e));

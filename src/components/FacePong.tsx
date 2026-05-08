@@ -15,6 +15,8 @@ import { createNoseTracker } from "@/lib/faceTracking";
 type UiPhase = "menu" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
 
+const LOBBY_PREFIX = "facepong-";
+
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
@@ -27,6 +29,19 @@ function parseRoomIdFromUrl() {
   if (typeof window === "undefined") return null;
   const u = new URL(window.location.href);
   return u.searchParams.get("room") || null;
+}
+
+function normalizeLobbyCode(input: string) {
+  return input.replace(/\D/g, "").slice(0, 6);
+}
+
+function makeLobbyCode() {
+  const n = Math.floor(Math.random() * 1_000_000);
+  return String(n).padStart(6, "0");
+}
+
+function lobbyIdFromCode(code6: string) {
+  return `${LOBBY_PREFIX}${code6}`;
 }
 
 function makeInitialNetState(): FacePongNetState {
@@ -56,6 +71,8 @@ export default function FacePong() {
   const [rallyScore, setRallyScore] = useState(0);
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [micOk, setMicOk] = useState<boolean | null>(null);
+  const [lobbyCode, setLobbyCode] = useState<string>(() => makeLobbyCode());
+  const [activeCode, setActiveCode] = useState<string | null>(null);
 
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
@@ -326,13 +343,30 @@ export default function FacePong() {
       },
     });
 
-    const { roomId: rid, peer } = await createHostRoom();
+    const code6 = normalizeLobbyCode(lobbyCode);
+    if (code6.length !== 6) {
+      setStatus("Enter a 6-digit lobby code.");
+      setUiPhase("menu");
+      return;
+    }
+    setActiveCode(code6);
+
+    const desiredId = lobbyIdFromCode(code6);
+    let rid: string;
+    let peer: any;
+    try {
+      const created = await createHostRoom({ desiredRoomId: desiredId });
+      rid = created.roomId;
+      peer = created.peer;
+    } catch {
+      setStatus("That lobby code is already in use. Tap New and try again.");
+      setUiPhase("menu");
+      return;
+    }
+
     peerRef.current = peer;
     setRoomId(rid);
-    const url = new URL(window.location.href);
-    url.pathname = "/facepong";
-    url.searchParams.set("room", rid);
-    setShareLink(url.toString());
+    setShareLink(null);
     setStatus("Waiting for opponent…");
 
     const conn = await waitForHostConnection(peer);
@@ -421,17 +455,27 @@ export default function FacePong() {
     });
   }
 
+  async function onJoinByCode(code: string) {
+    const code6 = normalizeLobbyCode(code);
+    if (code6.length !== 6) {
+      setStatus("Enter a 6-digit lobby code.");
+      return;
+    }
+    setActiveCode(code6);
+    await onJoinRoom(lobbyIdFromCode(code6));
+  }
+
   async function copyRoomLink() {
-    const link = shareLink || (roomId ? `${window.location.origin}/facepong?room=${roomId}` : null);
-    if (!link) return;
+    const text = activeCode ?? "";
+    if (!text) return;
     try {
-      await navigator.clipboard.writeText(link);
-      setCopyToast("Copied link");
+      await navigator.clipboard.writeText(text);
+      setCopyToast("Copied code");
     } catch {
       // fallback for older Safari
       try {
         const ta = document.createElement("textarea");
-        ta.value = link;
+        ta.value = text;
         ta.style.position = "fixed";
         ta.style.left = "-9999px";
         document.body.appendChild(ta);
@@ -439,7 +483,7 @@ export default function FacePong() {
         ta.select();
         document.execCommand("copy");
         document.body.removeChild(ta);
-        setCopyToast("Copied link");
+        setCopyToast("Copied code");
       } catch {
         setCopyToast("Copy failed");
       }
@@ -467,7 +511,15 @@ export default function FacePong() {
   useEffect(() => {
     // Auto-join if a room param exists
     if (startedFromInvite && uiPhase === "menu") {
-      void onJoinRoom(startedFromInvite);
+      const raw = startedFromInvite;
+      const code6 = normalizeLobbyCode(raw);
+      if (code6.length === 6) {
+        setLobbyCode(code6);
+        setActiveCode(code6);
+        void onJoinRoom(lobbyIdFromCode(code6));
+      } else {
+        void onJoinRoom(raw);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startedFromInvite]);
@@ -542,20 +594,36 @@ export default function FacePong() {
             <div className={styles.card}>
               <div className={styles.title}>FacePong</div>
               <div className={styles.sub}>
-                Create a room, share the link, and rally together.
+                Create a lobby code, then have your friend enter the same code.
               </div>
-              <div className={styles.row}>
-                <button className={styles.button} onClick={onCreateRoom}>
-                  Create Room
-                </button>
-                {startedFromInvite ? (
+              <div className={styles.codeWrap}>
+                <div className={styles.codeRow}>
+                  <input
+                    className={styles.codeInput}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={lobbyCode}
+                    onChange={(e) => setLobbyCode(normalizeLobbyCode(e.target.value))}
+                    aria-label="Lobby code"
+                  />
+                  <button
+                    className={styles.smallButton}
+                    onClick={() => setLobbyCode(makeLobbyCode())}
+                  >
+                    New
+                  </button>
+                </div>
+                <div className={styles.row2}>
+                  <button className={styles.button} onClick={onCreateRoom}>
+                    Create Lobby
+                  </button>
                   <button
                     className={`${styles.button} ${styles.buttonSecondary}`}
-                    onClick={() => void onJoinRoom(startedFromInvite)}
+                    onClick={() => void onJoinByCode(lobbyCode)}
                   >
-                    Join Room
+                    Join Lobby
                   </button>
-                ) : null}
+                </div>
               </div>
               <div className={styles.status}>{status}</div>
               {micOk === false ? (
@@ -575,11 +643,7 @@ export default function FacePong() {
               <div className={styles.sub}>
                 {opponentConnected ? "Opponent connected." : "Waiting for opponent…"}
               </div>
-              {shareLink ? (
-                <div className={styles.mono}>Share link: {shareLink}</div>
-              ) : roomId ? (
-                <div className={styles.mono}>Room: {roomId}</div>
-              ) : null}
+              {activeCode ? <div className={styles.mono}>Lobby code: {activeCode}</div> : null}
 
               <div className={styles.row}>
                 {canStart ? (
@@ -593,9 +657,9 @@ export default function FacePong() {
                 <button
                   className={`${styles.button} ${styles.buttonSecondary}`}
                   onClick={copyRoomLink}
-                  disabled={!shareLink && !roomId}
+                  disabled={!activeCode}
                 >
-                  Copy Link
+                  Copy Code
                 </button>
                 <button
                   className={`${styles.button} ${styles.buttonSecondary}`}
@@ -607,6 +671,7 @@ export default function FacePong() {
                     setShareLink(null);
                     setOpponentConnected(false);
                     setStatus("Idle");
+                    setActiveCode(null);
                   }}
                 >
                   Back

@@ -157,3 +157,39 @@
   opacity: 0.85;
 }
 
+.codeWrap {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.codeRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.codeInput {
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-align: center;
+  font-size: 16px;
+  outline: none;
+}
+
+.smallButton {
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  font-weight: 900;
+}
+
