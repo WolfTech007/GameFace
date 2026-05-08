@@ -121,7 +121,11 @@ export default function StaringContest() {
   async function ensureCamera() {
     if (streamRef.current) return streamRef.current;
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
       video: {
         facingMode: "user",
         width: { ideal: 720 },
@@ -316,8 +320,10 @@ export default function StaringContest() {
     }
   }
 
+  // Do not depend on `phase` here: when the host sets phase to "countdown", a re-run would
+  // clean up this effect and cancel the async loop (stuck on "3"). Use phaseRef to gate.
   useEffect(() => {
-    if (phase !== "lobby") return;
+    if (phaseRef.current !== "lobby") return;
     if (!localReady || !remoteReady) return;
     if (role !== "host") return;
 
@@ -360,7 +366,7 @@ export default function StaringContest() {
     return () => {
       cancelled = true;
     };
-  }, [phase, localReady, remoteReady, role, sendNet]);
+  }, [localReady, remoteReady, role, sendNet]);
 
   useEffect(() => {
     let cancelled = false;
@@ -512,7 +518,6 @@ export default function StaringContest() {
               ref={remoteVideoRef}
               className={`${styles.video} ${styles.videoRemote}`}
               playsInline
-              muted
               autoPlay
             />
             <div className={styles.nameTag}>{displayRemoteName}</div>
