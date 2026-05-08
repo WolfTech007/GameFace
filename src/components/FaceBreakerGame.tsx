@@ -265,13 +265,35 @@ export default function FaceBreakerGame() {
       audio: false,
       video: {
         facingMode: "user",
-        // Avoid square captures on iPhone; request portrait video.
+        // iOS Safari may try to give a landscape stream unless we nudge it hard.
+        // Prefer a portrait 9:16 capture.
         width: { ideal: 720 },
         height: { ideal: 1280 },
         aspectRatio: { ideal: 9 / 16 },
         frameRate: { ideal: 60, max: 60 },
       },
     });
+
+    // Try to apply stricter portrait constraints after we have a track.
+    const [track] = stream.getVideoTracks();
+    if (track?.applyConstraints) {
+      try {
+        await track.applyConstraints({
+          aspectRatio: 9 / 16,
+          width: { ideal: 720 },
+          height: { ideal: 1280 },
+          frameRate: { ideal: 60, max: 60 },
+          advanced: [
+            { aspectRatio: 9 / 16 },
+            { width: 720, height: 1280 },
+            { width: 1080, height: 1920 },
+          ],
+        });
+      } catch {
+        // If iOS rejects constraints, we'll still run with what we got.
+      }
+    }
+
     video.srcObject = stream;
     await video.play();
   }
