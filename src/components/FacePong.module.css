@@ -10,8 +10,9 @@
 }
 
 .frame {
-  width: min(100vw, 100svh);
-  aspect-ratio: 1 / 1;
+  /* Two stacked squares that fit in the viewport */
+  width: min(100%, calc(100svh / 2));
+  height: calc(min(100%, calc(100svh / 2)) * 2);
   position: relative;
   border-radius: 18px;
   overflow: hidden;
