@@ -294,7 +294,9 @@ export default function FacePong() {
     const localX01 = role === "guest" ? state.paddles.guestX : state.paddles.hostX;
     const remoteX01 = role === "guest" ? state.paddles.hostX : state.paddles.guestX;
     const localX = localX01 * w;
-    const remoteX = remoteX01 * w;
+    // Host views the guest’s unmirrored camera; guest tracking is mirror-corrected like their UI.
+    // Mirror remote X for host only so paddle + top video match world ball. Guest: keep as-is.
+    const remoteX = (role === "host" ? 1 - remoteX01 : remoteX01) * w;
 
     // Local paddle: physics Y is top for guest, bottom for host — map to bottom of screen for both.
     const localCenterY = guestFlipped ? cy(paddleYTop) : cy(paddleYBot);
@@ -564,7 +566,7 @@ export default function FacePong() {
         <div className={`${styles.half} ${styles.topHalf}`}>
           <video
             ref={remoteVideoRef}
-            className={`${styles.video} ${styles.opponentVideo}`}
+            className={`${styles.video} ${role === "host" ? styles.opponentVideoAsHost : styles.opponentVideo}`}
             playsInline
             autoPlay
           />
