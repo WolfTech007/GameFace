@@ -55,6 +55,7 @@ export default function FacePong() {
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [rallyScore, setRallyScore] = useState(0);
   const [copyToast, setCopyToast] = useState<string | null>(null);
+  const [micOk, setMicOk] = useState<boolean | null>(null);
 
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
@@ -83,8 +84,12 @@ export default function FacePong() {
     canvas.style.height = `${rect.height}px`;
   }
 
-  async function ensureLocalCamera() {
-    if (localStreamRef.current) return localStreamRef.current;
+  async function ensureLocalCamera(opts?: { force?: boolean }) {
+    if (localStreamRef.current && !opts?.force) {
+      const hasAudio = localStreamRef.current.getAudioTracks().length > 0;
+      setMicOk(hasAudio);
+      return localStreamRef.current;
+    }
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -99,6 +104,7 @@ export default function FacePong() {
       },
     });
     localStreamRef.current = stream;
+    setMicOk(stream.getAudioTracks().length > 0);
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
       await localVideoRef.current.play();
@@ -291,7 +297,7 @@ export default function FacePong() {
     setOpponentConnected(false);
     hostResetState();
 
-    const stream = await ensureLocalCamera();
+    const stream = await ensureLocalCamera({ force: true });
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
@@ -345,7 +351,7 @@ export default function FacePong() {
     setOpponentConnected(false);
     setRoomId(rid);
 
-    const stream = await ensureLocalCamera();
+    const stream = await ensureLocalCamera({ force: true });
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
@@ -530,6 +536,11 @@ export default function FacePong() {
                 ) : null}
               </div>
               <div className={styles.status}>{status}</div>
+              {micOk === false ? (
+                <div className={styles.status}>
+                  Mic blocked (no audio track). Enable Microphone for this site in iOS Safari settings, then try again.
+                </div>
+              ) : null}
               {copyToast ? <div className={styles.status}>{copyToast}</div> : null}
             </div>
           </div>
@@ -580,6 +591,11 @@ export default function FacePong() {
                 </button>
               </div>
               <div className={styles.status}>{status}</div>
+              {micOk === false ? (
+                <div className={styles.status}>
+                  Mic blocked (no audio track). Enable Microphone for this site in iOS Safari settings, then try again.
+                </div>
+              ) : null}
               {copyToast ? <div className={styles.status}>{copyToast}</div> : null}
             </div>
           </div>
