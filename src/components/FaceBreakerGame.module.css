@@ -1,0 +1,175 @@
+.root {
+  width: 100vw;
+  height: 100svh;
+  padding: 0;
+  margin: 0;
+  background: #000;
+  overflow: hidden;
+}
+
+.frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* mirror for front camera */
+  filter: saturate(1.05) contrast(1.08);
+  background: #000;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.hud {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  left: calc(var(--safe-left) + 12px);
+  right: calc(var(--safe-right) + 12px);
+  pointer-events: none;
+}
+
+.hudRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hudPill {
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-weight: 650;
+  letter-spacing: 0.2px;
+  backdrop-filter: blur(10px);
+}
+
+.hudSubtle {
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.8;
+  text-align: right;
+  padding-right: 2px;
+}
+
+.instructions {
+  position: absolute;
+  left: calc(var(--safe-left) + 12px);
+  right: calc(var(--safe-right) + 12px);
+  bottom: calc(var(--safe-bottom) + 12px);
+  text-align: center;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.card {
+  width: min(92vw, 420px);
+  border-radius: 22px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px);
+  padding: 18px 16px;
+  text-align: center;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.subtitle {
+  margin-top: 10px;
+  font-size: 14px;
+  opacity: 0.9;
+  line-height: 1.35;
+}
+
+.error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 70, 70, 0.14);
+  border: 1px solid rgba(255, 120, 120, 0.35);
+  font-size: 13px;
+}
+
+.primaryButton {
+  margin-top: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #67e8ff, #2fb8ff);
+  color: #00131c;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.primaryButton:active {
+  transform: translateY(1px);
+}
+
+.finePrint {
+  margin-top: 12px;
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.3;
+}
+
+.pauseOverlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.pauseCard {
+  width: min(86vw, 360px);
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px);
+  padding: 14px 14px;
+  text-align: center;
+}
+
+.pauseTitle {
+  font-size: 20px;
+  font-weight: 850;
+  letter-spacing: 0.3px;
+}
+
+.pauseSubtitle {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
