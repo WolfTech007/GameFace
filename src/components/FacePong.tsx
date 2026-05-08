@@ -86,7 +86,11 @@ export default function FacePong() {
   async function ensureLocalCamera() {
     if (localStreamRef.current) return localStreamRef.current;
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
       video: {
         facingMode: "user",
         width: { ideal: 720 },
@@ -483,7 +487,6 @@ export default function FacePong() {
             ref={remoteVideoRef}
             className={`${styles.video} ${styles.opponentVideo}`}
             playsInline
-            muted
             autoPlay
           />
         </div>
