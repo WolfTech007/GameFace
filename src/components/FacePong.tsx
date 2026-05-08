@@ -243,6 +243,12 @@ export default function FacePong() {
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
+    // Physics is host-centric: guest paddle at top (y≈0.08), host at bottom (y≈0.92).
+    // On the guest device, the bottom half is THEIR camera — so we flip Y when drawing
+    // so ball + paddles match what each player sees (fixes “who missed” feeling swapped).
+    const guestFlipped = role === "guest";
+    const cy = (yPhys: number) => (guestFlipped ? 1 - yPhys : yPhys) * h;
+
     // subtle overlay
     const grad = ctx.createLinearGradient(0, 0, 0, h);
     grad.addColorStop(0, "rgba(0,0,0,0.08)");
@@ -264,23 +270,30 @@ export default function FacePong() {
     const paddleH = Math.max(10, Math.round(w * 0.03));
     const padR = Math.round(paddleH * 0.6);
 
-    // The bottom half is always the local player's view.
-    // Host is local on host device; guest is local on guest device.
+    const paddleYTop = 0.08;
+    const paddleYBot = 0.92;
+
+    // Bottom half = local player; top half = opponent (same on both phones).
     const localX01 = role === "guest" ? state.paddles.guestX : state.paddles.hostX;
     const remoteX01 = role === "guest" ? state.paddles.hostX : state.paddles.guestX;
     const localX = localX01 * w;
-    const remoteX = remoteX01 * w;
+    // Mirror remote paddle X so it lines up with opponent video (mirrored like a selfie).
+    const remoteX = (1 - remoteX01) * w;
+
+    // Local paddle: physics Y is top for guest, bottom for host — map to bottom of screen for both.
+    const localCenterY = guestFlipped ? cy(paddleYTop) : cy(paddleYBot);
+    const remoteCenterY = guestFlipped ? cy(paddleYBot) : cy(paddleYTop);
 
     // paddles
     ctx.fillStyle = "rgba(255,255,255,0.92)";
-    roundRect(ctx, localX - paddleW / 2, h * 0.92 - paddleH / 2, paddleW, paddleH, padR);
+    roundRect(ctx, localX - paddleW / 2, localCenterY - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
-    roundRect(ctx, remoteX - paddleW / 2, h * 0.08 - paddleH / 2, paddleW, paddleH, padR);
+    roundRect(ctx, remoteX - paddleW / 2, remoteCenterY - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
 
     // ball
     const bx = state.ball.x * w;
-    const by = state.ball.y * h;
+    const by = cy(state.ball.y);
     const r = Math.max(6, Math.round(w * 0.018));
     ctx.beginPath();
     ctx.fillStyle = "rgba(255,255,255,0.95)";
