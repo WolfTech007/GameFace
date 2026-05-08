@@ -355,6 +355,9 @@ export default function FacePong() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
+      // Guest reported inverted controls: don't mirror on guest side.
+      // Host behavior stays unchanged.
+      mirrorSelfie: false,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;

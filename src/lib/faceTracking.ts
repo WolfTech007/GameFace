@@ -5,6 +5,7 @@ export type NoseTracker = {
     videoEl: HTMLVideoElement;
     onNoseX: (x01: number) => void;
     isPaused?: () => boolean;
+    mirrorSelfie?: boolean;
   }) => () => void;
 };
 
@@ -20,7 +21,7 @@ export async function createNoseTracker(): Promise<NoseTracker> {
   const landmarker = await createFaceLandmarker();
 
   return {
-    start({ videoEl, onNoseX, isPaused }) {
+    start({ videoEl, onNoseX, isPaused, mirrorSelfie = true }) {
       let raf: number | null = null;
       let lastDetectMs = 0;
       let smoothed = 0.5;
@@ -36,8 +37,7 @@ export async function createNoseTracker(): Promise<NoseTracker> {
             const pts = faces[0];
             const nose = pts[1] ?? pts[4] ?? pts[0];
             if (nose) {
-              // mirrored selfie display: invert X
-              const raw = clamp(1 - nose.x, 0, 1);
+              const raw = clamp(mirrorSelfie ? 1 - nose.x : nose.x, 0, 1);
               smoothed = lerp(smoothed, raw, 0.45);
               onNoseX(smoothed);
             }
