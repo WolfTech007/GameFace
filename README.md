@@ -29,6 +29,7 @@ To test on-device, run your dev server so it’s reachable on your LAN and open 
 - `/`: **Face Arcade** (menu)
 - `/facebreaker`: **FaceBreaker** (brick breaker controlled by nose)
 - `/facepong`: **FacePong** (2-player webcam pong prototype)
+- `/staring-contest`: **Staring Contest** (don’t blink — 1v1 via matchmaking + WebRTC)
 
 ## FaceBreaker (how to play)
 
@@ -39,11 +40,24 @@ To test on-device, run your dev server so it’s reachable on your LAN and open 
 ## FacePong (how to play)
 
 1. Open `/facepong`.
-2. Tap **Create Room** to generate a share link.
-3. Send the link to a friend.
-4. When they open it, you’ll see **Opponent connected**.
-5. Tap **Start Game** (host only).
-6. Both players move their noses left/right to rally the ball.
+2. Tap **Find Match**; when another player is waiting (or joins right after you), you’re paired over WebRTC (same in-memory queue pattern as Staring Contest).
+3. When connected, tap **Start Game** (matchmaking host only — physics authority stays on that peer).
+4. Both players move their noses left/right to rally the ball.
+
+## Staring Contest (how to play)
+
+1. Open `/staring-contest`, enter your name, tap **Find Match**.
+2. When another player is already waiting (or joins right after you), you’re paired.
+3. Tap **Ready** on both sides; host counts **3 · 2 · 1 · Stare!**
+4. First blink (or face lost for more than about one second) loses; both see the same winner.
+
+### Matchmaking note
+
+The queue APIs (`/api/staring-contest/queue`, `/api/facepong/queue`) keep separate **in-memory** waiting lists. That works on a **single** Node/dev server; on **serverless** with many instances, pair two browsers using **the same deployment** at the same time, or replace the queues with Redis/KV later.
+
+### Environment variables
+
+**None required** for this prototype.
 
 Notes:
 - FacePong is a prototype and uses PeerJS’s default broker for signaling. For production reliability, you’d host your own PeerServer or move to a managed realtime stack.
@@ -64,12 +78,20 @@ Notes:
 - `src/app/page.tsx`: Face Arcade homepage.
 - `src/app/facebreaker/page.tsx`: FaceBreaker route.
 - `src/app/facepong/page.tsx`: FacePong route.
+- `src/app/staring-contest/page.tsx`: Staring Contest route.
+- `src/app/api/staring-contest/queue/route.ts`: Simple matchmaking queue (pairs first two waiters).
+- `src/app/api/facepong/queue/route.ts`: FacePong-only matchmaking queue (pairs first two waiters).
 - `src/app/page.module.css`: Face Arcade styling.
 - `src/app/globals.css`: Global styles and safe-area variables.
 - `src/components/FaceBreakerGame.tsx`: Camera background, face tracking loop, game loop, UI flow (Start / Playing / Game Over / Win).
 - `src/components/FaceBreakerGame.module.css`: Mobile-first arcade UI styling.
 - `src/components/FacePong.tsx`: FacePong UI + game + peer connections.
 - `src/components/FacePong.module.css`: FacePong styling.
+- `src/components/StaringContest.tsx`: Staring Contest UI, blink detection, PeerJS sync.
+- `src/components/StaringContest.module.css`: Staring Contest styling.
+- `src/lib/staringContestFaceLandmarker.ts`: Separate Face Landmarker singleton (does not change FaceBreaker’s landmarker settings).
+- `src/lib/eyeBlinkEar.ts`: Eye aspect ratio + blink smoothing helpers.
+- `src/lib/staringContestProtocol.ts`: Message types for Staring Contest peer channel.
 - `src/lib/mediapipeFaceLandmarker.ts`: Loads and caches the MediaPipe Face Landmarker (WASM + model).
 - `src/lib/faceTracking.ts`: Shared “nose X” tracker used by FacePong.
 - `src/lib/peerRoom.ts`: Minimal PeerJS helpers + network message types for FacePong.

@@ -12,10 +12,10 @@ import {
 } from "@/lib/peerRoom";
 import { createNoseTracker } from "@/lib/faceTracking";
 
-type UiPhase = "menu" | "lobby" | "playing" | "gameover";
-type Role = "host" | "guest";
+const QUEUE_POLL_MS = 600;
 
-const LOBBY_PREFIX = "facepong-";
+type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
+type Role = "host" | "guest";
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -25,23 +25,38 @@ function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 
-function parseRoomIdFromUrl() {
-  if (typeof window === "undefined") return null;
-  const u = new URL(window.location.href);
-  return u.searchParams.get("room") || null;
+function makeClientId() {
+  if (typeof window === "undefined") return crypto.randomUUID();
+  const k = "facearcade-fp-id";
+  let id = window.sessionStorage.getItem(k);
+  if (!id) {
+    id = crypto.randomUUID();
+    window.sessionStorage.setItem(k, id);
+  }
+  return id;
 }
 
-function normalizeLobbyCode(input: string) {
-  return input.replace(/\D/g, "").slice(0, 6);
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
 }
 
-function makeLobbyCode() {
-  const n = Math.floor(Math.random() * 1_000_000);
-  return String(n).padStart(6, "0");
-}
-
-function lobbyIdFromCode(code6: string) {
-  return `${LOBBY_PREFIX}${code6}`;
+async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>[0], roomId: string) {
+  let lastErr: unknown;
+  for (let i = 0; i < 30; i++) {
+    try {
+      await sleep(i === 0 ? 700 : 350);
+      const conn = await Promise.race([
+        connectGuestToHost(peer, roomId),
+        new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error("connect timeout")), 12000),
+        ),
+      ]);
+      return conn;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Could not connect to opponent.");
 }
 
 function makeInitialNetState(): FacePongNetState {
@@ -58,6 +73,8 @@ function nowMs() {
 }
 
 export default function FacePong() {
+  const clientId = useMemo(() => makeClientId(), []);
+
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -66,17 +83,14 @@ export default function FacePong() {
   const [role, setRole] = useState<Role | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("Idle");
-  const [shareLink, setShareLink] = useState<string | null>(null);
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [rallyScore, setRallyScore] = useState(0);
-  const [copyToast, setCopyToast] = useState<string | null>(null);
   const [micOk, setMicOk] = useState<boolean | null>(null);
-  const [lobbyCode, setLobbyCode] = useState<string>(() => makeLobbyCode());
-  const [activeCode, setActiveCode] = useState<string | null>(null);
 
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
   const destroyRef = useRef<null | (() => void)>(null);
+  const matchPollRef = useRef<number | null>(null);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const hostStateRef = useRef<FacePongNetState>(makeInitialNetState());
@@ -86,8 +100,6 @@ export default function FacePong() {
 
   const localNoseXRef = useRef(0.5);
   const smoothedLocalPaddleRef = useRef(0.5);
-
-  const startedFromInvite = useMemo(() => parseRoomIdFromUrl(), []);
 
   function setCanvasSize() {
     const canvas = canvasRef.current;
@@ -129,7 +141,25 @@ export default function FacePong() {
     return stream;
   }
 
+  async function leaveQueue() {
+    try {
+      await fetch("/api/facepong/queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, action: "leave" }),
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
   function cleanup() {
+    if (matchPollRef.current) {
+      window.clearInterval(matchPollRef.current);
+      matchPollRef.current = null;
+    }
+    void leaveQueue();
+
     destroyRef.current?.();
     destroyRef.current = null;
 
@@ -261,9 +291,8 @@ export default function FacePong() {
     ctx.clearRect(0, 0, w, h);
 
     // Physics is host-centric: guest paddle at top (y≈0.08), host at bottom (y≈0.92).
-    // On the guest device, the bottom half is THEIR camera — so we flip Y when drawing
-    // so ball + paddles match what each player sees (fixes “who missed” feeling swapped).
-    const guestFlipped = role === "guest";
+    // Both players use guest-style screen mapping (bottom = you, flip Y like guest).
+    const guestFlipped = true;
     const cy = (yPhys: number) => (guestFlipped ? 1 - yPhys : yPhys) * h;
 
     // subtle overlay
@@ -294,9 +323,7 @@ export default function FacePong() {
     const localX01 = role === "guest" ? state.paddles.guestX : state.paddles.hostX;
     const remoteX01 = role === "guest" ? state.paddles.hostX : state.paddles.guestX;
     const localX = localX01 * w;
-    // Host views the guest’s unmirrored camera; guest tracking is mirror-corrected like their UI.
-    // Mirror remote X for host only so paddle + top video match world ball. Guest: keep as-is.
-    const remoteX = (role === "host" ? 1 - remoteX01 : remoteX01) * w;
+    const remoteX = remoteX01 * w;
 
     // Local paddle: physics Y is top for guest, bottom for host — map to bottom of screen for both.
     const localCenterY = guestFlipped ? cy(paddleYTop) : cy(paddleYBot);
@@ -324,10 +351,9 @@ export default function FacePong() {
     ctx.fill();
   }
 
-  async function onCreateRoom() {
+  async function connectAsHost(desiredRoomId: string) {
     cleanup();
     setStatus("Creating room…");
-    setUiPhase("lobby");
     setRole("host");
     setOpponentConnected(false);
     hostResetState();
@@ -336,39 +362,37 @@ export default function FacePong() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
+      mirrorSelfie: true,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;
-        // Keep host UI responsive immediately (even before opponent connects).
         hostStateRef.current.paddles.hostX = x01;
       },
     });
 
-    const code6 = normalizeLobbyCode(lobbyCode);
-    if (code6.length !== 6) {
-      setStatus("Enter a 6-digit lobby code.");
-      setUiPhase("menu");
-      return;
-    }
-    setActiveCode(code6);
-
-    const desiredId = lobbyIdFromCode(code6);
     let rid: string;
     let peer: any;
     try {
-      const created = await createHostRoom({ desiredRoomId: desiredId });
+      const created = await createHostRoom({ desiredRoomId });
       rid = created.roomId;
       peer = created.peer;
     } catch {
-      setStatus("That lobby code is already in use. Tap New and try again.");
-      setUiPhase("menu");
-      return;
+      throw new Error("Room unavailable");
     }
 
     peerRef.current = peer;
     setRoomId(rid);
-    setShareLink(null);
     setStatus("Waiting for opponent…");
+
+    peer.on("call", (call: any) => {
+      call.answer(stream);
+      call.on("stream", (remoteStream: MediaStream) => {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          void remoteVideoRef.current.play();
+        }
+      });
+    });
 
     const conn = await waitForHostConnection(peer);
     dataRef.current = conn;
@@ -380,27 +404,14 @@ export default function FacePong() {
       if (msg.t === "paddle") guestPaddleXRef.current = clamp(msg.x01, 0, 1);
     });
 
-    // Receive guest stream (guest will call host)
-    peer.on("call", (call: any) => {
-      call.answer(stream);
-      call.on("stream", (remoteStream: MediaStream) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          void remoteVideoRef.current.play();
-        }
-      });
-    });
-
-    // also send our stream to guest
     conn.on("open", () => {
       conn.send({ t: "hello", roomId: rid } satisfies HostToGuestMsg);
     });
   }
 
-  async function onJoinRoom(rid: string) {
+  async function connectAsGuest(rid: string) {
     cleanup();
-    setStatus("Joining room…");
-    setUiPhase("lobby");
+    setStatus("Joining…");
     setRole("guest");
     setOpponentConnected(false);
     setRoomId(rid);
@@ -409,8 +420,6 @@ export default function FacePong() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
-      // Keep mapping consistent: both players see "move left -> paddle left".
-      // Our local preview is mirrored, so mirrorSelfie stays true.
       mirrorSelfie: true,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
@@ -422,7 +431,7 @@ export default function FacePong() {
     const peer = await createGuestPeer();
     peerRef.current = peer;
 
-    const conn = await connectGuestToHost(peer, rid);
+    const conn = await connectGuestWithRetry(peer, rid);
     dataRef.current = conn;
     setOpponentConnected(true);
     setStatus("Opponent connected");
@@ -437,7 +446,6 @@ export default function FacePong() {
       }
     });
 
-    // Guest sends their media stream to host; host will answer and stream back.
     const call = peer.call(rid, stream);
     call.on("stream", (remoteStream: MediaStream) => {
       if (remoteVideoRef.current) {
@@ -456,41 +464,66 @@ export default function FacePong() {
     });
   }
 
-  async function onJoinByCode(code: string) {
-    const code6 = normalizeLobbyCode(code);
-    if (code6.length !== 6) {
-      setStatus("Enter a 6-digit lobby code.");
-      return;
+  async function applyMatch(peerRoomId: string, r: Role) {
+    if (matchPollRef.current) {
+      window.clearInterval(matchPollRef.current);
+      matchPollRef.current = null;
     }
-    setActiveCode(code6);
-    await onJoinRoom(lobbyIdFromCode(code6));
+    setStatus("Connecting…");
+    try {
+      if (r === "host") {
+        await connectAsHost(peerRoomId);
+      } else {
+        await connectAsGuest(peerRoomId);
+      }
+      setUiPhase("lobby");
+    } catch {
+      cleanup();
+      setStatus("Connection failed. Try again.");
+      setUiPhase("menu");
+    }
   }
 
-  async function copyRoomLink() {
-    const text = activeCode ?? "";
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopyToast("Copied code");
-    } catch {
-      // fallback for older Safari
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        setCopyToast("Copied code");
-      } catch {
-        setCopyToast("Copy failed");
-      }
-    } finally {
-      window.setTimeout(() => setCopyToast(null), 1200);
+  async function findMatch() {
+    if (matchPollRef.current) {
+      window.clearInterval(matchPollRef.current);
+      matchPollRef.current = null;
     }
+    setStatus("Searching for opponent…");
+    setUiPhase("matchmaking");
+
+    const res = await fetch("/api/facepong/queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, action: "join" }),
+    });
+    const data = await res.json();
+    if (data.matched) {
+      await applyMatch(data.peerRoomId as string, data.role as Role);
+      return;
+    }
+
+    matchPollRef.current = window.setInterval(async () => {
+      const r = await fetch(`/api/facepong/queue?clientId=${encodeURIComponent(clientId)}`);
+      const j = await r.json();
+      if (j.matched) {
+        if (matchPollRef.current) {
+          window.clearInterval(matchPollRef.current);
+          matchPollRef.current = null;
+        }
+        await applyMatch(j.peerRoomId as string, j.role as Role);
+      }
+    }, QUEUE_POLL_MS);
+  }
+
+  function cancelMatchmaking() {
+    if (matchPollRef.current) {
+      window.clearInterval(matchPollRef.current);
+      matchPollRef.current = null;
+    }
+    void leaveQueue();
+    setUiPhase("menu");
+    setStatus("Idle");
   }
 
   function onPlayAgain() {
@@ -508,22 +541,6 @@ export default function FacePong() {
     window.addEventListener("resize", setCanvasSize);
     return () => window.removeEventListener("resize", setCanvasSize);
   }, []);
-
-  useEffect(() => {
-    // Auto-join if a room param exists
-    if (startedFromInvite && uiPhase === "menu") {
-      const raw = startedFromInvite;
-      const code6 = normalizeLobbyCode(raw);
-      if (code6.length === 6) {
-        setLobbyCode(code6);
-        setActiveCode(code6);
-        void onJoinRoom(lobbyIdFromCode(code6));
-      } else {
-        void onJoinRoom(raw);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startedFromInvite]);
 
   useEffect(() => {
     let raf: number | null = null;
@@ -557,6 +574,7 @@ export default function FacePong() {
 
   const canStart = role === "host" && opponentConnected && uiPhase === "lobby";
   const showMenu = uiPhase === "menu";
+  const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
   const showGameOver = uiPhase === "gameover";
 
@@ -566,7 +584,7 @@ export default function FacePong() {
         <div className={`${styles.half} ${styles.topHalf}`}>
           <video
             ref={remoteVideoRef}
-            className={`${styles.video} ${role === "host" ? styles.opponentVideoAsHost : styles.opponentVideo}`}
+            className={`${styles.video} ${styles.opponentVideo}`}
             playsInline
             autoPlay
           />
@@ -586,53 +604,45 @@ export default function FacePong() {
         <div className={styles.hud}>
           <div className={styles.pill}>Rally: {rallyScore}</div>
           <div className={styles.pill}>
-            {role ? role.toUpperCase() : "FACEPONG"} {opponentConnected ? "• 2P" : "• 1P"}
+            FacePong {opponentConnected ? "• 2P" : "• 1P"}
           </div>
         </div>
 
-        {showMenu ? (
+        {showMenu || showMatchmaking ? (
           <div className={styles.overlay}>
             <div className={styles.card}>
               <div className={styles.title}>FacePong</div>
-              <div className={styles.sub}>
-                Create a lobby code, then have your friend enter the same code.
-              </div>
-              <div className={styles.codeWrap}>
-                <div className={styles.codeRow}>
-                  <input
-                    className={styles.codeInput}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={lobbyCode}
-                    onChange={(e) => setLobbyCode(normalizeLobbyCode(e.target.value))}
-                    aria-label="Lobby code"
-                  />
-                  <button
-                    className={styles.smallButton}
-                    onClick={() => setLobbyCode(makeLobbyCode())}
-                  >
-                    New
-                  </button>
-                </div>
-                <div className={styles.row2}>
-                  <button className={styles.button} onClick={onCreateRoom}>
-                    Create Lobby
-                  </button>
-                  <button
-                    className={`${styles.button} ${styles.buttonSecondary}`}
-                    onClick={() => void onJoinByCode(lobbyCode)}
-                  >
-                    Join Lobby
-                  </button>
-                </div>
-              </div>
+              {showMatchmaking ? (
+                <>
+                  <div className={styles.sub}>Searching for an opponent…</div>
+                  <div className={styles.row}>
+                    <button
+                      className={`${styles.button} ${styles.buttonSecondary}`}
+                      type="button"
+                      onClick={cancelMatchmaking}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={styles.sub}>
+                    Match with the next available player (same queue style as Staring Contest).
+                  </div>
+                  <div className={styles.row}>
+                    <button className={styles.button} type="button" onClick={() => void findMatch()}>
+                      Find Match
+                    </button>
+                  </div>
+                </>
+              )}
               <div className={styles.status}>{status}</div>
               {micOk === false ? (
                 <div className={styles.status}>
                   Mic blocked (no audio track). Enable Microphone for this site in iOS Safari settings, then try again.
                 </div>
               ) : null}
-              {copyToast ? <div className={styles.status}>{copyToast}</div> : null}
             </div>
           </div>
         ) : null}
@@ -644,7 +654,6 @@ export default function FacePong() {
               <div className={styles.sub}>
                 {opponentConnected ? "Opponent connected." : "Waiting for opponent…"}
               </div>
-              {activeCode ? <div className={styles.mono}>Lobby code: {activeCode}</div> : null}
 
               <div className={styles.row}>
                 {canStart ? (
@@ -657,22 +666,13 @@ export default function FacePong() {
               <div className={styles.row2}>
                 <button
                   className={`${styles.button} ${styles.buttonSecondary}`}
-                  onClick={copyRoomLink}
-                  disabled={!activeCode}
-                >
-                  Copy Code
-                </button>
-                <button
-                  className={`${styles.button} ${styles.buttonSecondary}`}
                   onClick={() => {
                     cleanup();
                     setUiPhase("menu");
                     setRole(null);
                     setRoomId(null);
-                    setShareLink(null);
                     setOpponentConnected(false);
                     setStatus("Idle");
-                    setActiveCode(null);
                   }}
                 >
                   Back
@@ -684,7 +684,6 @@ export default function FacePong() {
                   Mic blocked (no audio track). Enable Microphone for this site in iOS Safari settings, then try again.
                 </div>
               ) : null}
-              {copyToast ? <div className={styles.status}>{copyToast}</div> : null}
             </div>
           </div>
         ) : null}

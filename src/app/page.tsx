@@ -25,6 +25,14 @@ export default function Page() {
             Play
           </Link>
         </section>
+
+        <section className={styles.card}>
+          <div className={styles.cardTitle}>Staring Contest</div>
+          <div className={styles.cardDesc}>Don&apos;t blink.</div>
+          <Link className={styles.playButton} href="/staring-contest">
+            Play
+          </Link>
+        </section>
       </div>
     </main>
   );

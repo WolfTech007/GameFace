@@ -58,8 +58,8 @@ export async function createGuestPeer(): Promise<Peer> {
   return peer;
 }
 
-export function connectGuestToHost(peer: Peer, roomId: string) {
-  const data = peer.connect(roomId, { reliable: false });
+export function connectGuestToHost(peer: Peer, roomId: string, opts?: { reliable?: boolean }) {
+  const data = peer.connect(roomId, { reliable: opts?.reliable ?? false });
   return new Promise<DataConnection>((resolve, reject) => {
     data.on("open", () => resolve(data));
     data.on("error", (e) => reject(e));

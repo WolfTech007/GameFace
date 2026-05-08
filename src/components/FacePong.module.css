@@ -50,14 +50,8 @@
 }
 
 .opponentVideo {
-  /* Guest device: upside-down only; their remote (host) feed matches tracking + ball. */
+  /* Remote feed: rotated so it matches guest-style layout for both players. */
   transform: rotate(180deg);
-}
-
-/* Host device: guest’s nose X is mirror-corrected for *their* selfie; raw feed looks inverted.
-   Mirror here so top window + remote paddle line up with ball for the host only. */
-.opponentVideoAsHost {
-  transform: rotate(180deg) scaleX(-1);
 }
 
 .canvas {

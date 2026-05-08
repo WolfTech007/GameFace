@@ -1,0 +1,221 @@
+.root {
+  width: 100vw;
+  min-height: 100svh;
+  background: #050508;
+  color: #fff;
+  overflow-x: hidden;
+}
+
+.intro {
+  padding: calc(var(--safe-top) + 24px) calc(var(--safe-left) + 18px) calc(var(--safe-bottom) + 24px)
+    calc(var(--safe-right) + 18px);
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.bigTitle {
+  font-size: 34px;
+  font-weight: 950;
+  letter-spacing: 0.5px;
+  line-height: 1.1;
+}
+
+.tagline {
+  margin-top: 10px;
+  font-size: 15px;
+  opacity: 0.88;
+}
+
+.field {
+  margin-top: 22px;
+  display: grid;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.nameInput {
+  width: 100%;
+  padding: 14px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+}
+
+.primaryBtn {
+  margin-top: 16px;
+  width: 100%;
+  padding: 15px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #c9ff7a, #7ae87a);
+  color: #081208;
+  font-weight: 950;
+  font-size: 17px;
+}
+
+.secondaryBtn {
+  margin-top: 12px;
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: 800;
+}
+
+.statusText {
+  margin-top: 14px;
+  font-size: 14px;
+  opacity: 0.88;
+}
+
+.gameWrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+}
+
+.splitTop,
+.splitBottom {
+  position: relative;
+  flex: 1;
+  min-height: 42svh;
+  background: #000;
+  overflow: hidden;
+}
+
+.divider {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+}
+
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.videoLocal {
+  transform: scaleX(-1);
+}
+
+.videoRemote {
+  /* No upside-down flip per spec */
+  transform: none;
+}
+
+.nameTag {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-weight: 850;
+  font-size: 13px;
+  pointer-events: none;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timerOverlay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  padding: 14px 22px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(10px);
+  font-weight: 950;
+  font-size: 44px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
+
+.warnBanner {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(180, 60, 60, 0.55);
+  border: 1px solid rgba(255, 180, 180, 0.35);
+  font-size: 13px;
+  font-weight: 750;
+  max-width: 92%;
+  text-align: center;
+}
+
+.countdownFlash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  padding: 14px 22px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(10px);
+  font-weight: 950;
+  font-size: 72px;
+  pointer-events: none;
+}
+
+.overlayCard {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 10;
+}
+
+.card {
+  width: min(92vw, 420px);
+  border-radius: 20px;
+  background: rgba(10, 10, 14, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 20px 16px;
+  text-align: center;
+}
+
+.cardTitle {
+  font-size: 26px;
+  font-weight: 950;
+}
+
+.cardBody {
+  margin-top: 12px;
+  font-size: 15px;
+  opacity: 0.9;
+  line-height: 1.45;
+}
+
+.win {
+  color: #b8ff9a;
+}
+
+.lose {
+  color: #ffc9c9;
+}
