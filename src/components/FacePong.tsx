@@ -294,8 +294,7 @@ export default function FacePong() {
     const localX01 = role === "guest" ? state.paddles.guestX : state.paddles.hostX;
     const remoteX01 = role === "guest" ? state.paddles.hostX : state.paddles.guestX;
     const localX = localX01 * w;
-    // Mirror remote paddle X so it lines up with opponent video (mirrored like a selfie).
-    const remoteX = (1 - remoteX01) * w;
+    const remoteX = remoteX01 * w;
 
     // Local paddle: physics Y is top for guest, bottom for host — map to bottom of screen for both.
     const localCenterY = guestFlipped ? cy(paddleYTop) : cy(paddleYBot);

@@ -50,7 +50,8 @@
 }
 
 .opponentVideo {
-  transform: rotate(180deg) scaleX(-1); /* upside-down opponent */
+  /* Upside-down “across the table”; no horizontal flip so paddle X matches physics */
+  transform: rotate(180deg);
 }
 
 .canvas {
