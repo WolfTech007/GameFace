@@ -568,11 +568,11 @@ export default function FaceBreakerGame() {
           const nose = pts[1] ?? pts[4] ?? pts[0];
           if (nose) {
             // Map nose -> on-screen X, accounting for optional 90° rotation for portrait.
-            // If we rotate(90deg) + mirror(scaleX(-1)) for display, the on-screen X corresponds to
-            // the original landmark Y.
+            // If we rotate(-90deg) + mirror(scaleX(-1)) for display, the on-screen X corresponds to
+            // (1 - original landmark Y).
             const rotated = videoOrientationRef.current.rotated;
             const nx = rotated
-              ? clamp(nose.y, 0, 1)
+              ? clamp(1 - nose.y, 0, 1)
               : clamp(1 - nose.x, 0, 1);
 
             const c = controlRef.current;

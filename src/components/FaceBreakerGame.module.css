@@ -35,7 +35,7 @@
   /* If iOS gives us a landscape buffer, rotate it to portrait for display. */
   width: 100%;
   height: 100%;
-  transform: translate(-50%, -50%) rotate(90deg) scaleX(-1);
+  transform: translate(-50%, -50%) rotate(-90deg) scaleX(-1);
 }
 
 .canvas {
