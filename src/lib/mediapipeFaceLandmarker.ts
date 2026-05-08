@@ -12,6 +12,7 @@ export async function createFaceLandmarker() {
 
   singleton = await FaceLandmarker.createFromOptions(vision, {
     baseOptions: {
+      delegate: "GPU",
       modelAssetPath:
         "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
     },
@@ -19,6 +20,9 @@ export async function createFaceLandmarker() {
     outputFacialTransformationMatrixes: false,
     runningMode: "VIDEO",
     numFaces: 1,
+    minFaceDetectionConfidence: 0.6,
+    minFacePresenceConfidence: 0.6,
+    minTrackingConfidence: 0.6,
   });
 
   return singleton;

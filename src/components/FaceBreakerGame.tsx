@@ -183,6 +183,7 @@ function initialState(canvasW: number, canvasH: number): GameState {
 }
 
 export default function FaceBreakerGame() {
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -209,6 +210,10 @@ export default function FaceBreakerGame() {
   const rafRef = useRef<number | null>(null);
   const trackerRafRef = useRef<number | null>(null);
   const pauseRef = useRef({ paused: false, startedAtMs: 0 });
+  const viewRef = useRef({
+    containerW: 0,
+    containerH: 0,
+  });
 
   const overlayText = useMemo(() => {
     if (phase === "start") return "Move your nose left and right to control the paddle.";
@@ -224,6 +229,8 @@ export default function FaceBreakerGame() {
     if (!parent) return;
 
     const rect = parent.getBoundingClientRect();
+    viewRef.current.containerW = rect.width;
+    viewRef.current.containerH = rect.height;
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
     canvas.width = Math.floor(rect.width * dpr);
@@ -258,8 +265,10 @@ export default function FaceBreakerGame() {
       audio: false,
       video: {
         facingMode: "user",
-        width: { ideal: 720 },
-        height: { ideal: 1280 },
+        width: { ideal: 640 },
+        height: { ideal: 640 },
+        aspectRatio: { ideal: 9 / 16 },
+        frameRate: { ideal: 30, max: 30 },
       },
     });
     video.srcObject = stream;
@@ -506,11 +515,21 @@ export default function FaceBreakerGame() {
   }
 
   function trackerLoop() {
+    let lastDetectMs = 0;
     const step = () => {
       const lm = landmarkerRef.current;
       const video = videoRef.current;
-      if (lm && video && video.readyState >= 2 && phase === "playing" && !pauseRef.current.paused) {
-        const res = lm.detectForVideo(video, performance.now());
+      const now = performance.now();
+      if (
+        lm &&
+        video &&
+        video.readyState >= 2 &&
+        phase === "playing" &&
+        !pauseRef.current.paused &&
+        now - lastDetectMs >= 33
+      ) {
+        lastDetectMs = now;
+        const res = lm.detectForVideo(video, now);
         const faces = res.faceLandmarks;
         if (faces && faces.length > 0) {
           const pts = faces[0];
@@ -518,12 +537,31 @@ export default function FaceBreakerGame() {
           if (nose) {
             // The selfie video is mirrored (scaleX(-1)), but the model sees the unmirrored stream.
             // Flip X so "move nose right" moves paddle right.
-            const nx = 1 - clamp(nose.x, 0, 1);
+            const vx = clamp(1 - nose.x, 0, 1);
+
+            // The video is displayed with object-fit: contain (no zoom). Map landmark X to the
+            // container X taking letterboxing into account so paddle feels correct in portrait.
+            const cw = viewRef.current.containerW || frameRef.current?.getBoundingClientRect().width || 0;
+            const ch = viewRef.current.containerH || frameRef.current?.getBoundingClientRect().height || 0;
+            const vw = video.videoWidth || 0;
+            const vh = video.videoHeight || 0;
+
+            let nx = vx;
+            if (cw > 0 && ch > 0 && vw > 0 && vh > 0) {
+              const scale = Math.min(cw / vw, ch / vh); // contain
+              const dw = vw * scale;
+              const dh = vh * scale;
+              const offsetX = (cw - dw) / 2;
+              // const offsetY = (ch - dh) / 2; // unused for X mapping
+              const xPx = offsetX + vx * dw;
+              nx = clamp(xPx / cw, 0, 1);
+            }
+
             const c = controlRef.current;
             c.noseX01 = nx;
             c.smoothedX01 = lerp(c.smoothedX01, nx, 0.28);
             c.hasNose = true;
-            c.lastSeenMs = performance.now();
+            c.lastSeenMs = now;
           }
         }
       }
@@ -622,7 +660,7 @@ export default function FaceBreakerGame() {
 
   return (
     <main className={styles.root}>
-      <div className={styles.frame} onClick={togglePause}>
+      <div ref={frameRef} className={styles.frame} onClick={togglePause}>
         <video
           ref={videoRef}
           className={styles.video}
