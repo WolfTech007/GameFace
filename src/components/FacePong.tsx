@@ -54,6 +54,7 @@ export default function FacePong() {
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [rallyScore, setRallyScore] = useState(0);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
 
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
@@ -388,6 +389,33 @@ export default function FacePong() {
     });
   }
 
+  async function copyRoomLink() {
+    const link = shareLink || (roomId ? `${window.location.origin}/facepong?room=${roomId}` : null);
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopyToast("Copied link");
+    } catch {
+      // fallback for older Safari
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCopyToast("Copied link");
+      } catch {
+        setCopyToast("Copy failed");
+      }
+    } finally {
+      window.setTimeout(() => setCopyToast(null), 1200);
+    }
+  }
+
   function onPlayAgain() {
     if (role === "host") {
       hostResetState();
@@ -499,6 +527,7 @@ export default function FacePong() {
                 ) : null}
               </div>
               <div className={styles.status}>{status}</div>
+              {copyToast ? <div className={styles.status}>{copyToast}</div> : null}
             </div>
           </div>
         ) : null}
@@ -522,6 +551,16 @@ export default function FacePong() {
                     Start Game
                   </button>
                 ) : null}
+              </div>
+
+              <div className={styles.row2}>
+                <button
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  onClick={copyRoomLink}
+                  disabled={!shareLink && !roomId}
+                >
+                  Copy Link
+                </button>
                 <button
                   className={`${styles.button} ${styles.buttonSecondary}`}
                   onClick={() => {
@@ -538,6 +577,7 @@ export default function FacePong() {
                 </button>
               </div>
               <div className={styles.status}>{status}</div>
+              {copyToast ? <div className={styles.status}>{copyToast}</div> : null}
             </div>
           </div>
         ) : null}
