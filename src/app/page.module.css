@@ -1,0 +1,73 @@
+.root {
+  width: 100vw;
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--safe-top) + 24px) calc(var(--safe-left) + 18px)
+    calc(var(--safe-bottom) + 24px) calc(var(--safe-right) + 18px);
+  gap: 18px;
+  background: radial-gradient(120% 90% at 50% 0%, rgba(103, 232, 255, 0.12), rgba(0, 0, 0, 0) 60%),
+    #000;
+}
+
+.header {
+  text-align: left;
+}
+
+.title {
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+}
+
+.subtitle {
+  margin-top: 8px;
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.card {
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(12px);
+  padding: 16px 14px;
+}
+
+.cardTitle {
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: 0.2px;
+}
+
+.cardDesc {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.playButton {
+  margin-top: 14px;
+  display: inline-flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  padding: 13px 14px;
+  border-radius: 16px;
+  text-decoration: none;
+  background: linear-gradient(180deg, #67e8ff, #2fb8ff);
+  color: #00131c;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+}
+
+.playButton:active {
+  transform: translateY(1px);
+}
+
