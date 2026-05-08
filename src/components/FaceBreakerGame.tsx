@@ -194,7 +194,6 @@ export default function FaceBreakerGame() {
   const [uiLives, setUiLives] = useState(3);
   const [uiSpeedPct, setUiSpeedPct] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [rotateVideoForPortrait, setRotateVideoForPortrait] = useState(false);
 
   const controlRef = useRef({
     noseX01: 0.5,
@@ -215,7 +214,6 @@ export default function FaceBreakerGame() {
     containerW: 0,
     containerH: 0,
   });
-  const videoOrientationRef = useRef({ rotated: false });
 
   const overlayText = useMemo(() => {
     if (phase === "start") return "Move your nose left and right to control the paddle.";
@@ -298,13 +296,6 @@ export default function FaceBreakerGame() {
 
     video.srcObject = stream;
     await video.play();
-
-    // Detect if we received a landscape buffer in portrait UI; if so, rotate for display.
-    const vw = video.videoWidth || 0;
-    const vh = video.videoHeight || 0;
-    const rotated = vw > 0 && vh > 0 && vw > vh;
-    videoOrientationRef.current.rotated = rotated;
-    setRotateVideoForPortrait(rotated);
   }
 
   function cleanupCamera() {
@@ -567,13 +558,24 @@ export default function FaceBreakerGame() {
           const pts = faces[0];
           const nose = pts[1] ?? pts[4] ?? pts[0];
           if (nose) {
-            // Map nose -> on-screen X, accounting for optional 90° rotation for portrait.
-            // If we rotate(-90deg) + mirror(scaleX(-1)) for display, the on-screen X corresponds to
-            // (1 - original landmark Y).
-            const rotated = videoOrientationRef.current.rotated;
-            const nx = rotated
-              ? clamp(1 - nose.y, 0, 1)
-              : clamp(1 - nose.x, 0, 1);
+            // Map nose -> on-screen X for mirrored selfie view.
+            // Also correct for object-fit: cover cropping so the paddle matches what you see.
+            const vx = clamp(1 - nose.x, 0, 1);
+
+            const cw = viewRef.current.containerW || frameRef.current?.getBoundingClientRect().width || 0;
+            const ch = viewRef.current.containerH || frameRef.current?.getBoundingClientRect().height || 0;
+            const vw = video.videoWidth || 0;
+            const vh = video.videoHeight || 0;
+
+            let nx = vx;
+            if (cw > 0 && ch > 0 && vw > 0 && vh > 0) {
+              // cover: scale = max, content spills/crops; map through that crop.
+              const scale = Math.max(cw / vw, ch / vh);
+              const dw = vw * scale;
+              const offsetX = (cw - dw) / 2;
+              const xPx = offsetX + vx * dw;
+              nx = clamp(xPx / cw, 0, 1);
+            }
 
             const c = controlRef.current;
             c.noseX01 = nx;
@@ -681,7 +683,7 @@ export default function FaceBreakerGame() {
       <div ref={frameRef} className={styles.frame} onClick={togglePause}>
         <video
           ref={videoRef}
-          className={`${styles.video} ${rotateVideoForPortrait ? styles.videoRotated : ""}`}
+          className={styles.video}
           playsInline
           muted
           autoPlay
