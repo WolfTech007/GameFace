@@ -264,14 +264,18 @@ export default function FacePong() {
     const paddleH = Math.max(10, Math.round(w * 0.03));
     const padR = Math.round(paddleH * 0.6);
 
-    const hostX = state.paddles.hostX * w;
-    const guestX = state.paddles.guestX * w;
+    // The bottom half is always the local player's view.
+    // Host is local on host device; guest is local on guest device.
+    const localX01 = role === "guest" ? state.paddles.guestX : state.paddles.hostX;
+    const remoteX01 = role === "guest" ? state.paddles.hostX : state.paddles.guestX;
+    const localX = localX01 * w;
+    const remoteX = remoteX01 * w;
 
     // paddles
     ctx.fillStyle = "rgba(255,255,255,0.92)";
-    roundRect(ctx, hostX - paddleW / 2, h * 0.92 - paddleH / 2, paddleW, paddleH, padR);
+    roundRect(ctx, localX - paddleW / 2, h * 0.92 - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
-    roundRect(ctx, guestX - paddleW / 2, h * 0.08 - paddleH / 2, paddleW, paddleH, padR);
+    roundRect(ctx, remoteX - paddleW / 2, h * 0.08 - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
 
     // ball
@@ -304,6 +308,8 @@ export default function FacePong() {
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;
+        // Keep host UI responsive immediately (even before opponent connects).
+        hostStateRef.current.paddles.hostX = x01;
       },
     });
 
@@ -355,9 +361,9 @@ export default function FacePong() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
-      // Guest reported inverted controls: don't mirror on guest side.
-      // Host behavior stays unchanged.
-      mirrorSelfie: false,
+      // Keep mapping consistent: both players see "move left -> paddle left".
+      // Our local preview is mirrored, so mirrorSelfie stays true.
+      mirrorSelfie: true,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;
