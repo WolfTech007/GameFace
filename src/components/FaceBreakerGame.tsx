@@ -265,10 +265,11 @@ export default function FaceBreakerGame() {
       audio: false,
       video: {
         facingMode: "user",
-        width: { ideal: 640 },
-        height: { ideal: 640 },
+        // Avoid square captures on iPhone; request portrait video.
+        width: { ideal: 720 },
+        height: { ideal: 1280 },
         aspectRatio: { ideal: 9 / 16 },
-        frameRate: { ideal: 30, max: 30 },
+        frameRate: { ideal: 60, max: 60 },
       },
     });
     video.srcObject = stream;
@@ -337,7 +338,7 @@ export default function FaceBreakerGame() {
     const ctrl = controlRef.current;
     const desiredX = clamp(ctrl.smoothedX01, 0, 1) * canvas.width - g.paddleW / 2;
     // Keep it responsive while still smooth.
-    g.paddleX = lerp(g.paddleX, clamp(desiredX, 0, canvas.width - g.paddleW), 0.35);
+    g.paddleX = lerp(g.paddleX, clamp(desiredX, 0, canvas.width - g.paddleW), 0.55);
 
     if (g.awaitingServe) {
       g.ballX = g.paddleX + g.paddleW / 2;
@@ -526,7 +527,7 @@ export default function FaceBreakerGame() {
         video.readyState >= 2 &&
         phase === "playing" &&
         !pauseRef.current.paused &&
-        now - lastDetectMs >= 33
+        now - lastDetectMs >= 16
       ) {
         lastDetectMs = now;
         const res = lm.detectForVideo(video, now);
@@ -539,27 +540,22 @@ export default function FaceBreakerGame() {
             // Flip X so "move nose right" moves paddle right.
             const vx = clamp(1 - nose.x, 0, 1);
 
-            // The video is displayed with object-fit: contain (no zoom). Map landmark X to the
-            // container X taking letterboxing into account so paddle feels correct in portrait.
+            // The video is displayed with object-fit: cover. Since we request portrait 9:16 video,
+            // the crop should be minimal and latency lower, so use raw normalized X for control.
             const cw = viewRef.current.containerW || frameRef.current?.getBoundingClientRect().width || 0;
             const ch = viewRef.current.containerH || frameRef.current?.getBoundingClientRect().height || 0;
             const vw = video.videoWidth || 0;
             const vh = video.videoHeight || 0;
 
             let nx = vx;
-            if (cw > 0 && ch > 0 && vw > 0 && vh > 0) {
-              const scale = Math.min(cw / vw, ch / vh); // contain
-              const dw = vw * scale;
-              const dh = vh * scale;
-              const offsetX = (cw - dw) / 2;
-              // const offsetY = (ch - dh) / 2; // unused for X mapping
-              const xPx = offsetX + vx * dw;
-              nx = clamp(xPx / cw, 0, 1);
-            }
+            void cw;
+            void ch;
+            void vw;
+            void vh;
 
             const c = controlRef.current;
             c.noseX01 = nx;
-            c.smoothedX01 = lerp(c.smoothedX01, nx, 0.28);
+            c.smoothedX01 = lerp(c.smoothedX01, nx, 0.45);
             c.hasNose = true;
             c.lastSeenMs = now;
           }
