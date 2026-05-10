@@ -14,8 +14,8 @@ import { createNoseTracker } from "@/lib/faceTracking";
 
 const QUEUE_POLL_MS = 600;
 
-/** Set `true` briefly to verify net sync (host authority, seq, timestamps). Production: keep `false`. */
-const FP_NET_DEBUG = false;
+/** World/sync debug overlay. Enable while diagnosing; keep `false` in production. */
+const FP_WORLD_DEBUG = false;
 
 type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
@@ -105,6 +105,14 @@ function nowMs() {
 
 type GuestSnap = { state: FacePongNetState; seq: number; recvAt: number };
 
+/**
+ * Shared world space (host sim only). +y is down. Same mapping on every client.
+ * - World Player A (bottom paddle, y≈0.92) = matchmaking **host** → `paddles.hostX`
+ * - World Player B (top paddle, y≈0.08) = matchmaking **guest** → `paddles.guestX`
+ */
+const PADDLE_WORLD_Y_TOP = 0.08;
+const PADDLE_WORLD_Y_BOT = 0.92;
+
 export default function FacePong() {
   const clientId = useMemo(() => makeClientId(), []);
 
@@ -147,12 +155,15 @@ export default function FacePong() {
   const lastGuestSeqRef = useRef(-1);
   const lastStateRecvAtRef = useRef<number | null>(null);
   const lastSentAtRef = useRef<number | null>(null);
+  /** Guest: `sentAt` from last authoritative state packet (host perf clock). */
+  const lastAuthSentAtFromHostRef = useRef<number | null>(null);
   const remotePeerIdRef = useRef<string | null>(null);
+  const lastRenderedBallRef = useRef({ x: 0, y: 0 });
 
-  const [, setNetDebugTick] = useState(0);
+  const [, setWorldDebugTick] = useState(0);
   useEffect(() => {
-    if (!FP_NET_DEBUG) return;
-    const id = window.setInterval(() => setNetDebugTick((x) => x + 1), 250);
+    if (!FP_WORLD_DEBUG) return;
+    const id = window.setInterval(() => setWorldDebugTick((x) => x + 1), 200);
     return () => window.clearInterval(id);
   }, []);
 
@@ -229,6 +240,7 @@ export default function FacePong() {
     dataRef.current = null;
     remotePeerIdRef.current = null;
     lastSentAtRef.current = null;
+    lastAuthSentAtFromHostRef.current = null;
 
     const s = localStreamRef.current;
     if (s) {
@@ -309,19 +321,17 @@ export default function FacePong() {
     }
 
     const paddleW = 0.26;
-    const paddleYTop = 0.08;
-    const paddleYBot = 0.92;
 
     // update paddles from latest controls
     s.paddles.hostX = smoothedLocalPaddleRef.current;
     s.paddles.guestX = guestPaddleXRef.current;
 
-    // collide with top paddle (guest)
-    if (s.ball.vy < 0 && s.ball.y <= paddleYTop + 0.02) {
+    // collide with top paddle (world B / guest)
+    if (s.ball.vy < 0 && s.ball.y <= PADDLE_WORLD_Y_TOP + 0.02) {
       const px = s.paddles.guestX;
       if (Math.abs(s.ball.x - px) <= paddleW / 2) {
         // hit
-        s.ball.y = paddleYTop + 0.02;
+        s.ball.y = PADDLE_WORLD_Y_TOP + 0.02;
         s.ball.vy = Math.abs(s.ball.vy);
         const off = (s.ball.x - px) / (paddleW / 2);
         s.ball.vx += off * 0.18;
@@ -331,11 +341,11 @@ export default function FacePong() {
       }
     }
 
-    // collide with bottom paddle (host)
-    if (s.ball.vy > 0 && s.ball.y >= paddleYBot - 0.02) {
+    // collide with bottom paddle (world A / host)
+    if (s.ball.vy > 0 && s.ball.y >= PADDLE_WORLD_Y_BOT - 0.02) {
       const px = s.paddles.hostX;
       if (Math.abs(s.ball.x - px) <= paddleW / 2) {
-        s.ball.y = paddleYBot - 0.02;
+        s.ball.y = PADDLE_WORLD_Y_BOT - 0.02;
         s.ball.vy = -Math.abs(s.ball.vy);
         const off = (s.ball.x - px) / (paddleW / 2);
         s.ball.vx += off * 0.18;
@@ -369,6 +379,10 @@ export default function FacePong() {
     return blendNetState(prev.state, curr.state, alpha);
   }
 
+  /**
+   * Renders **only** authoritative world state. No per-viewer role remap: world +y = down on canvas.
+   * Top half of the frame ≈ world player B (guest); bottom half ≈ world player A (host).
+   */
   function draw(state: FacePongNetState) {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -379,10 +393,7 @@ export default function FacePong() {
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
-    // Physics is host-centric: guest paddle at top (y≈0.08), host at bottom (y≈0.92).
-    // Both players use guest-style screen mapping (bottom = you, flip Y like guest).
-    const guestFlipped = true;
-    const cy = (yPhys: number) => (guestFlipped ? 1 - yPhys : yPhys) * h;
+    const screenY = (y01: number) => y01 * h;
 
     // subtle overlay
     const grad = ctx.createLinearGradient(0, 0, 0, h);
@@ -391,7 +402,7 @@ export default function FacePong() {
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // center line
+    // center line (world equator between the two video halves)
     ctx.strokeStyle = "rgba(255,255,255,0.12)";
     ctx.lineWidth = Math.max(1, Math.round(w * 0.004));
     ctx.setLineDash([Math.max(6, Math.round(w * 0.03)), Math.max(6, Math.round(w * 0.03))]);
@@ -405,30 +416,23 @@ export default function FacePong() {
     const paddleH = Math.max(10, Math.round(w * 0.03));
     const padR = Math.round(paddleH * 0.6);
 
-    const paddleYTop = 0.08;
-    const paddleYBot = 0.92;
+    const topCx = state.paddles.guestX * w;
+    const topCy = screenY(PADDLE_WORLD_Y_TOP);
+    const botCx = state.paddles.hostX * w;
+    const botCy = screenY(PADDLE_WORLD_Y_BOT);
 
-    // Bottom half = local player; top half = opponent (same on both phones).
-    const who = roleRef.current;
-    const localX01 = who === "guest" ? state.paddles.guestX : state.paddles.hostX;
-    const remoteX01 = who === "guest" ? state.paddles.hostX : state.paddles.guestX;
-    const localX = localX01 * w;
-    const remoteX = remoteX01 * w;
-
-    // Local paddle: physics Y is top for guest, bottom for host — map to bottom of screen for both.
-    const localCenterY = guestFlipped ? cy(paddleYTop) : cy(paddleYBot);
-    const remoteCenterY = guestFlipped ? cy(paddleYBot) : cy(paddleYTop);
-
-    // paddles
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
-    roundRect(ctx, localX - paddleW / 2, localCenterY - paddleH / 2, paddleW, paddleH, padR);
+    // World B (guest / top paddle)
+    ctx.fillStyle = "rgba(180, 235, 255, 0.95)";
+    roundRect(ctx, topCx - paddleW / 2, topCy - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
-    roundRect(ctx, remoteX - paddleW / 2, remoteCenterY - paddleH / 2, paddleW, paddleH, padR);
+    // World A (host / bottom paddle)
+    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+    roundRect(ctx, botCx - paddleW / 2, botCy - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
 
-    // ball
+    // ball (same world coords on both clients)
     const bx = state.ball.x * w;
-    const by = cy(state.ball.y);
+    const by = screenY(state.ball.y);
     const ballR = Math.max(6, Math.round(w * 0.018));
     ctx.beginPath();
     ctx.fillStyle = "rgba(255,255,255,0.95)";
@@ -452,7 +456,8 @@ export default function FacePong() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
-      mirrorSelfie: true,
+      /** Same world X for host & guest: raw landmark space → sim. Selfie mirroring is CSS-only (`.video`). */
+      mirrorSelfie: false,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;
@@ -504,6 +509,7 @@ export default function FacePong() {
     lastGuestSeqRef.current = -1;
     guestSnapPrevRef.current = null;
     guestSnapCurrRef.current = null;
+    lastAuthSentAtFromHostRef.current = null;
     setStatus("Joining…");
     setRole("guest");
     setOpponentConnected(false);
@@ -513,7 +519,8 @@ export default function FacePong() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
-      mirrorSelfie: true,
+      /** Identical mapping to host: world paddle X is not software-mirrored per role. */
+      mirrorSelfie: false,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;
@@ -539,6 +546,7 @@ export default function FacePong() {
 
         const authoritative = cloneNetState(msg.state);
         hostStateRef.current = authoritative;
+        lastAuthSentAtFromHostRef.current = msg.sentAt;
 
         const recvAt = performance.now();
         if (msg.state.phase === "lobby") {
@@ -667,8 +675,10 @@ export default function FacePong() {
         broadcastAuthoritativeState();
       }
 
-      // Guest must not simulate; render interpolated authoritative state from host.
-      draw(getDrawState());
+      // Guest must not simulate; render interpolated authoritative world state from host only.
+      const ds = getDrawState();
+      lastRenderedBallRef.current = { x: ds.ball.x, y: ds.ball.y };
+      draw(ds);
 
       raf = requestAnimationFrame(loop);
     };
@@ -701,7 +711,7 @@ export default function FacePong() {
         <div className={`${styles.half} ${styles.bottomHalf}`}>
           <video
             ref={localVideoRef}
-            className={styles.video}
+            className={`${styles.video} ${styles.videoLocalUi}`}
             playsInline
             muted
             autoPlay
@@ -717,15 +727,34 @@ export default function FacePong() {
           </div>
         </div>
 
-        {FP_NET_DEBUG ? (
-          <div className={styles.debugNet}>
-            <div>auth host: {role === "host" ? "yes" : "no"}</div>
-            <div>local id: {clientId.slice(0, 10)}…</div>
-            <div>room: {roomId ?? "—"}</div>
-            <div>remote peer: {remotePeerIdRef.current ?? "—"}</div>
+        {FP_WORLD_DEBUG ? (
+          <div className={styles.debugWorld}>
             <div>
-              seq: {role === "host" ? hostSeqRef.current : lastGuestSeqRef.current} · sent{" "}
-              {lastSentAtRef.current?.toFixed(0) ?? "—"} · recv {lastStateRecvAtRef.current?.toFixed(0) ?? "—"}
+              <b>World</b> +y↓ · A=bottom(host) · B=top(guest)
+            </div>
+            <div>my id: {clientId.slice(0, 12)}…</div>
+            <div>host peer id (room): {roomId ?? "—"}</div>
+            <div>remote PeerJS: {remotePeerIdRef.current ?? "—"}</div>
+            <div>am I host? {role === "host" ? "yes" : "no"}</div>
+            <div>
+              I am world player: {role === "host" ? "A (bottom paddle)" : "B (top paddle)"}
+            </div>
+            <div>I control: {role === "host" ? "hostX (world A)" : "guestX (world B)"}</div>
+            <div>ball / sim source: host only</div>
+            <div>game over declared by: host only {uiPhase === "gameover" ? "(shown)" : ""}</div>
+            <div>
+              ball xy: {lastRenderedBallRef.current.x.toFixed(3)},{" "}
+              {lastRenderedBallRef.current.y.toFixed(3)}
+            </div>
+            <div>
+              last auth sentAt:{" "}
+              {role === "host"
+                ? lastSentAtRef.current?.toFixed(1) ?? "—"
+                : lastAuthSentAtFromHostRef.current?.toFixed(1) ?? "—"}{" "}
+              · recv {lastStateRecvAtRef.current?.toFixed(1) ?? "—"}
+            </div>
+            <div>
+              seq {role === "host" ? hostSeqRef.current : lastGuestSeqRef.current}
             </div>
           </div>
         ) : null}
