@@ -14,8 +14,8 @@ import { createNoseTracker } from "@/lib/faceTracking";
 
 const QUEUE_POLL_MS = 600;
 
-/** World/sync debug overlay. Enable while diagnosing; keep `false` in production. */
-const FP_WORLD_DEBUG = false;
+/** Canonical world / net debug overlay (Player A=host bottom, Player B=guest top). */
+const FP_WORLD_DEBUG = true;
 
 type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
@@ -80,30 +80,9 @@ function cloneNetState(s: FacePongNetState): FacePongNetState {
   };
 }
 
-/** Guest-only: interpolate between last two authoritative snapshots for smooth rendering (does not run physics). */
-function blendNetState(a: FacePongNetState, b: FacePongNetState, u: number): FacePongNetState {
-  const t = clamp(u, 0, 1);
-  return {
-    phase: b.phase,
-    rallyScore: b.rallyScore,
-    ball: {
-      x: lerp(a.ball.x, b.ball.x, t),
-      y: lerp(a.ball.y, b.ball.y, t),
-      vx: lerp(a.ball.vx, b.ball.vx, t),
-      vy: lerp(a.ball.vy, b.ball.vy, t),
-    },
-    paddles: {
-      hostX: lerp(a.paddles.hostX, b.paddles.hostX, t),
-      guestX: lerp(a.paddles.guestX, b.paddles.guestX, t),
-    },
-  };
-}
-
 function nowMs() {
   return performance.now();
 }
-
-type GuestSnap = { state: FacePongNetState; seq: number; recvAt: number };
 
 /**
  * Shared world space (host sim only). +y is down. Same mapping on every client.
@@ -121,6 +100,11 @@ export default function FacePong() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [uiPhase, setUiPhase] = useState<UiPhase>("menu");
+  const uiPhaseRef = useRef<UiPhase>("menu");
+  useEffect(() => {
+    uiPhaseRef.current = uiPhase;
+  }, [uiPhase]);
+
   const [role, setRole] = useState<Role | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("Idle");
@@ -143,22 +127,19 @@ export default function FacePong() {
   /** Monotonic per session; reset when host resets lobby state so guest can accept new epochs. */
   const hostSeqRef = useRef(0);
   const guestPaddleXRef = useRef(0.5);
-  const lastHostTickRef = useRef(0);
   const hostStartedAtRef = useRef<number | null>(null);
 
   const localNoseXRef = useRef(0.5);
   const smoothedLocalPaddleRef = useRef(0.5);
 
-  /** Guest-only: last two snapshots for render interpolation (physics never run here). */
-  const guestSnapPrevRef = useRef<GuestSnap | null>(null);
-  const guestSnapCurrRef = useRef<GuestSnap | null>(null);
   const lastGuestSeqRef = useRef(-1);
   const lastStateRecvAtRef = useRef<number | null>(null);
   const lastSentAtRef = useRef<number | null>(null);
   /** Guest: `sentAt` from last authoritative state packet (host perf clock). */
   const lastAuthSentAtFromHostRef = useRef<number | null>(null);
   const remotePeerIdRef = useRef<string | null>(null);
-  const lastRenderedBallRef = useRef({ x: 0, y: 0 });
+  const lastRenderedBallRef = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
+  const physicsRunningRef = useRef(false);
 
   const [, setWorldDebugTick] = useState(0);
   useEffect(() => {
@@ -276,7 +257,6 @@ export default function FacePong() {
   function hostResetState() {
     hostStateRef.current = makeInitialNetState();
     hostStartedAtRef.current = null;
-    lastHostTickRef.current = 0;
     setRallyScore(0);
   }
 
@@ -361,22 +341,12 @@ export default function FacePong() {
     }
   }
 
-  /** Guest interpolates between last packets for smooth motion; host draws authoritative ref. */
+  /**
+   * Render snapshot: **identical** authoritative world on host + guest (no guest-side blending;
+   * blending caused tiny mismatches vs host). Guest receives-only; draws latest `hostStateRef`.
+   */
   function getDrawState(): FacePongNetState {
-    if (roleRef.current !== "guest") {
-      return hostStateRef.current;
-    }
-    const prev = guestSnapPrevRef.current;
-    const curr = guestSnapCurrRef.current;
-    if (!curr) return hostStateRef.current;
-    if (!prev || prev.recvAt === curr.recvAt) return curr.state;
-    const now = performance.now();
-    const interpDelayMs = 72;
-    const target = now - interpDelayMs;
-    let alpha = (target - prev.recvAt) / (curr.recvAt - prev.recvAt);
-    if (!Number.isFinite(alpha)) alpha = 1;
-    alpha = clamp(alpha, 0, 1);
-    return blendNetState(prev.state, curr.state, alpha);
+    return hostStateRef.current;
   }
 
   /**
@@ -499,15 +469,13 @@ export default function FacePong() {
     });
 
     conn.on("open", () => {
-      conn.send({ t: "hello", roomId: rid } satisfies HostToGuestMsg);
+      broadcastAuthoritativeState();
     });
   }
 
   async function connectAsGuest(rid: string) {
     cleanup();
     lastGuestSeqRef.current = -1;
-    guestSnapPrevRef.current = null;
-    guestSnapCurrRef.current = null;
     lastAuthSentAtFromHostRef.current = null;
     setStatus("Joining…");
     setRole("guest");
@@ -521,7 +489,6 @@ export default function FacePong() {
       mirrorSelfie: true,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
-        smoothedLocalPaddleRef.current = x01;
         sendToHost({ t: "paddle", x01 });
       },
     });
@@ -545,15 +512,6 @@ export default function FacePong() {
         const authoritative = cloneNetState(msg.state);
         hostStateRef.current = authoritative;
         lastAuthSentAtFromHostRef.current = msg.sentAt;
-
-        const recvAt = performance.now();
-        if (msg.state.phase === "lobby") {
-          guestSnapPrevRef.current = null;
-          guestSnapCurrRef.current = { state: authoritative, seq: msg.seq, recvAt };
-        } else {
-          guestSnapPrevRef.current = guestSnapCurrRef.current;
-          guestSnapCurrRef.current = { state: authoritative, seq: msg.seq, recvAt };
-        }
 
         setRallyScore(msg.state.rallyScore);
         if (msg.state.phase === "playing") setUiPhase("playing");
@@ -666,16 +624,28 @@ export default function FacePong() {
       const dt = clamp((n - last) / 1000, 0, 0.05);
       last = n;
 
-      // Host: sole physics + collision + score + game over. Broadcast ~display rate (raf ≈ 60 Hz).
-      if (roleRef.current === "host" && opponentConnected) {
-        if (!lastHostTickRef.current) lastHostTickRef.current = n;
-        hostTick(dt);
-        broadcastAuthoritativeState();
+      const isHost = roleRef.current === "host";
+      const playing = uiPhaseRef.current === "playing";
+      physicsRunningRef.current = !!(isHost && opponentConnected && playing);
+
+      // Host: sole physics while playing. Guest never calls hostTick. Broadcast playing + gameover so joiner stays in sync.
+      if (isHost && opponentConnected) {
+        if (hostStateRef.current.phase === "playing") {
+          hostTick(dt);
+        }
+        const ph = hostStateRef.current.phase;
+        if (ph === "playing" || ph === "gameover") {
+          broadcastAuthoritativeState();
+        }
       }
 
-      // Guest must not simulate; render interpolated authoritative world state from host only.
       const ds = getDrawState();
-      lastRenderedBallRef.current = { x: ds.ball.x, y: ds.ball.y };
+      lastRenderedBallRef.current = {
+        x: ds.ball.x,
+        y: ds.ball.y,
+        vx: ds.ball.vx,
+        vy: ds.ball.vy,
+      };
       draw(ds);
 
       raf = requestAnimationFrame(loop);
@@ -698,23 +668,47 @@ export default function FacePong() {
   return (
     <main className={styles.root}>
       <div className={styles.frame}>
-        <div className={`${styles.half} ${styles.topHalf}`}>
-          <video
-            ref={remoteVideoRef}
-            className={`${styles.video} ${styles.opponentVideo}`}
-            playsInline
-            autoPlay
-          />
-        </div>
-        <div className={`${styles.half} ${styles.bottomHalf}`}>
-          <video
-            ref={localVideoRef}
-            className={styles.video}
-            playsInline
-            muted
-            autoPlay
-          />
-        </div>
+        {role === "guest" ? (
+          <>
+            <div className={`${styles.half} ${styles.topHalf}`}>
+              <video
+                ref={localVideoRef}
+                className={styles.video}
+                playsInline
+                muted
+                autoPlay
+              />
+            </div>
+            <div className={`${styles.half} ${styles.bottomHalf}`}>
+              <video
+                ref={remoteVideoRef}
+                className={styles.video}
+                playsInline
+                autoPlay
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={`${styles.half} ${styles.topHalf}`}>
+              <video
+                ref={remoteVideoRef}
+                className={styles.video}
+                playsInline
+                autoPlay
+              />
+            </div>
+            <div className={`${styles.half} ${styles.bottomHalf}`}>
+              <video
+                ref={localVideoRef}
+                className={styles.video}
+                playsInline
+                muted
+                autoPlay
+              />
+            </div>
+          </>
+        )}
 
         <canvas ref={canvasRef} className={styles.canvas} />
 
@@ -727,32 +721,34 @@ export default function FacePong() {
 
         {FP_WORLD_DEBUG ? (
           <div className={styles.debugWorld}>
+            <div>localUserId: {clientId}</div>
+            <div>roomCreatorId: {roomId ?? "—"}</div>
+            <div>amIHost: {role === "host" ? "true" : role === "guest" ? "false" : "—"}</div>
             <div>
-              <b>World</b> +y↓ · A=bottom(host) · B=top(guest)
+              myRole:{" "}
+              {role === "host" ? "Player A" : role === "guest" ? "Player B" : "—"}
             </div>
-            <div>my id: {clientId.slice(0, 12)}…</div>
-            <div>host peer id (room): {roomId ?? "—"}</div>
-            <div>remote PeerJS: {remotePeerIdRef.current ?? "—"}</div>
-            <div>am I host? {role === "host" ? "yes" : "no"}</div>
+            <div>physicsRunning: {physicsRunningRef.current ? "true" : "false"}</div>
             <div>
-              I am world player: {role === "host" ? "A (bottom paddle)" : "B (top paddle)"}
-            </div>
-            <div>I control: {role === "host" ? "hostX (world A)" : "guestX (world B)"}</div>
-            <div>ball / sim source: host only</div>
-            <div>game over declared by: host only {uiPhase === "gameover" ? "(shown)" : ""}</div>
-            <div>
-              ball xy: {lastRenderedBallRef.current.x.toFixed(3)},{" "}
-              {lastRenderedBallRef.current.y.toFixed(3)}
+              ball x/y: {lastRenderedBallRef.current.x.toFixed(4)},{" "}
+              {lastRenderedBallRef.current.y.toFixed(4)} · vx/vy:{" "}
+              {lastRenderedBallRef.current.vx.toFixed(4)}, {lastRenderedBallRef.current.vy.toFixed(4)}
             </div>
             <div>
-              last auth sentAt:{" "}
+              last authoritative update (local perf ms):{" "}
               {role === "host"
                 ? lastSentAtRef.current?.toFixed(1) ?? "—"
-                : lastAuthSentAtFromHostRef.current?.toFixed(1) ?? "—"}{" "}
-              · recv {lastStateRecvAtRef.current?.toFixed(1) ?? "—"}
+                : lastStateRecvAtRef.current?.toFixed(1) ?? "—"}
+              {role === "guest" ? (
+                <>
+                  {" "}
+                  · host sentAt: {lastAuthSentAtFromHostRef.current?.toFixed(1) ?? "—"}
+                </>
+              ) : null}
             </div>
             <div>
-              seq {role === "host" ? hostSeqRef.current : lastGuestSeqRef.current}
+              remotePeerId: {remotePeerIdRef.current ?? "—"} · seq{" "}
+              {role === "host" ? hostSeqRef.current : lastGuestSeqRef.current}
             </div>
           </div>
         ) : null}

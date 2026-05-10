@@ -49,11 +49,6 @@
   filter: saturate(1.05) contrast(1.05);
 }
 
-.opponentVideo {
-  /* Remote feed: rotated so it matches guest-style layout for both players. */
-  transform: rotate(180deg);
-}
-
 .canvas {
   position: absolute;
   inset: 0;
