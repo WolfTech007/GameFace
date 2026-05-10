@@ -15,7 +15,7 @@ import { createNoseTracker } from "@/lib/faceTracking";
 const QUEUE_POLL_MS = 600;
 
 /** Canonical world / net debug overlay (Player A=host bottom, Player B=guest top). */
-const FP_WORLD_DEBUG = true;
+const FP_WORLD_DEBUG = false;
 
 type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
