@@ -456,8 +456,7 @@ export default function FacePong() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
-      /** Same world X for host & guest: raw landmark space → sim. Selfie mirroring is CSS-only (`.video`). */
-      mirrorSelfie: false,
+      mirrorSelfie: true,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;
@@ -519,8 +518,7 @@ export default function FacePong() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
-      /** Identical mapping to host: world paddle X is not software-mirrored per role. */
-      mirrorSelfie: false,
+      mirrorSelfie: true,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;
@@ -711,7 +709,7 @@ export default function FacePong() {
         <div className={`${styles.half} ${styles.bottomHalf}`}>
           <video
             ref={localVideoRef}
-            className={`${styles.video} ${styles.videoLocalUi}`}
+            className={styles.video}
             playsInline
             muted
             autoPlay

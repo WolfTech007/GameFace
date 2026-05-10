@@ -39,23 +39,18 @@
   border-top: 1px solid rgba(255, 255, 255, 0.10);
 }
 
-/* Shared video box (does not affect canvas / simulation). */
 .video {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform: scaleX(-1);
   filter: saturate(1.05) contrast(1.05);
 }
 
-/* Local selfie preview only: horizontal mirror for UX. Paddle/sim uses unmirrored nose X from FacePong. */
-.videoLocalUi {
-  transform: scaleX(-1);
-}
-
 .opponentVideo {
-  /* Remote feed: presentation-only (world/canvas unchanged). */
+  /* Remote feed: rotated so it matches guest-style layout for both players. */
   transform: rotate(180deg);
 }
 
