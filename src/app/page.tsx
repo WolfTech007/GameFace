@@ -33,6 +33,14 @@ export default function Page() {
             Play
           </Link>
         </section>
+
+        <section className={styles.card}>
+          <div className={styles.cardTitle}>FaceCard</div>
+          <div className={styles.cardDesc}>Guess who you are.</div>
+          <Link className={styles.playButton} href="/facecard">
+            Play
+          </Link>
+        </section>
       </div>
     </main>
   );
