@@ -14,6 +14,9 @@ import { createNoseTracker } from "@/lib/faceTracking";
 
 const QUEUE_POLL_MS = 600;
 
+/** Set `true` briefly to verify net sync (host authority, seq, timestamps). Production: keep `false`. */
+const FP_NET_DEBUG = false;
+
 type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
 
@@ -46,7 +49,7 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
     try {
       await sleep(i === 0 ? 700 : 350);
       const conn = await Promise.race([
-        connectGuestToHost(peer, roomId),
+        connectGuestToHost(peer, roomId, { reliable: true }),
         new Promise<never>((_, rej) =>
           setTimeout(() => rej(new Error("connect timeout")), 12000),
         ),
@@ -68,9 +71,39 @@ function makeInitialNetState(): FacePongNetState {
   };
 }
 
+function cloneNetState(s: FacePongNetState): FacePongNetState {
+  return {
+    phase: s.phase,
+    rallyScore: s.rallyScore,
+    ball: { ...s.ball },
+    paddles: { ...s.paddles },
+  };
+}
+
+/** Guest-only: interpolate between last two authoritative snapshots for smooth rendering (does not run physics). */
+function blendNetState(a: FacePongNetState, b: FacePongNetState, u: number): FacePongNetState {
+  const t = clamp(u, 0, 1);
+  return {
+    phase: b.phase,
+    rallyScore: b.rallyScore,
+    ball: {
+      x: lerp(a.ball.x, b.ball.x, t),
+      y: lerp(a.ball.y, b.ball.y, t),
+      vx: lerp(a.ball.vx, b.ball.vx, t),
+      vy: lerp(a.ball.vy, b.ball.vy, t),
+    },
+    paddles: {
+      hostX: lerp(a.paddles.hostX, b.paddles.hostX, t),
+      guestX: lerp(a.paddles.guestX, b.paddles.guestX, t),
+    },
+  };
+}
+
 function nowMs() {
   return performance.now();
 }
+
+type GuestSnap = { state: FacePongNetState; seq: number; recvAt: number };
 
 export default function FacePong() {
   const clientId = useMemo(() => makeClientId(), []);
@@ -87,6 +120,11 @@ export default function FacePong() {
   const [rallyScore, setRallyScore] = useState(0);
   const [micOk, setMicOk] = useState<boolean | null>(null);
 
+  const roleRef = useRef<Role | null>(null);
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
+
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
   const destroyRef = useRef<null | (() => void)>(null);
@@ -94,12 +132,29 @@ export default function FacePong() {
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const hostStateRef = useRef<FacePongNetState>(makeInitialNetState());
+  /** Monotonic per session; reset when host resets lobby state so guest can accept new epochs. */
+  const hostSeqRef = useRef(0);
   const guestPaddleXRef = useRef(0.5);
   const lastHostTickRef = useRef(0);
   const hostStartedAtRef = useRef<number | null>(null);
 
   const localNoseXRef = useRef(0.5);
   const smoothedLocalPaddleRef = useRef(0.5);
+
+  /** Guest-only: last two snapshots for render interpolation (physics never run here). */
+  const guestSnapPrevRef = useRef<GuestSnap | null>(null);
+  const guestSnapCurrRef = useRef<GuestSnap | null>(null);
+  const lastGuestSeqRef = useRef(-1);
+  const lastStateRecvAtRef = useRef<number | null>(null);
+  const lastSentAtRef = useRef<number | null>(null);
+  const remotePeerIdRef = useRef<string | null>(null);
+
+  const [, setNetDebugTick] = useState(0);
+  useEffect(() => {
+    if (!FP_NET_DEBUG) return;
+    const id = window.setInterval(() => setNetDebugTick((x) => x + 1), 250);
+    return () => window.clearInterval(id);
+  }, []);
 
   function setCanvasSize() {
     const canvas = canvasRef.current;
@@ -172,6 +227,8 @@ export default function FacePong() {
     }
     peerRef.current = null;
     dataRef.current = null;
+    remotePeerIdRef.current = null;
+    lastSentAtRef.current = null;
 
     const s = localStreamRef.current;
     if (s) {
@@ -190,6 +247,20 @@ export default function FacePong() {
     if (conn && conn.open) conn.send(msg);
   }
 
+  /** Host-only authoritative snapshot (seq + timestamp for guest interpolation / debug). */
+  function broadcastAuthoritativeState() {
+    if (roleRef.current !== "host") return;
+    hostSeqRef.current += 1;
+    const sentAt = performance.now();
+    lastSentAtRef.current = sentAt;
+    sendToGuest({
+      t: "state",
+      state: cloneNetState(hostStateRef.current),
+      seq: hostSeqRef.current,
+      sentAt,
+    });
+  }
+
   function hostResetState() {
     hostStateRef.current = makeInitialNetState();
     hostStartedAtRef.current = null;
@@ -205,7 +276,7 @@ export default function FacePong() {
     s.paddles.hostX = smoothedLocalPaddleRef.current;
     s.paddles.guestX = guestPaddleXRef.current;
     hostStartedAtRef.current = nowMs();
-    sendToGuest({ t: "state", state: s });
+    broadcastAuthoritativeState();
     setUiPhase("playing");
   }
 
@@ -280,6 +351,24 @@ export default function FacePong() {
     }
   }
 
+  /** Guest interpolates between last packets for smooth motion; host draws authoritative ref. */
+  function getDrawState(): FacePongNetState {
+    if (roleRef.current !== "guest") {
+      return hostStateRef.current;
+    }
+    const prev = guestSnapPrevRef.current;
+    const curr = guestSnapCurrRef.current;
+    if (!curr) return hostStateRef.current;
+    if (!prev || prev.recvAt === curr.recvAt) return curr.state;
+    const now = performance.now();
+    const interpDelayMs = 72;
+    const target = now - interpDelayMs;
+    let alpha = (target - prev.recvAt) / (curr.recvAt - prev.recvAt);
+    if (!Number.isFinite(alpha)) alpha = 1;
+    alpha = clamp(alpha, 0, 1);
+    return blendNetState(prev.state, curr.state, alpha);
+  }
+
   function draw(state: FacePongNetState) {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -320,8 +409,9 @@ export default function FacePong() {
     const paddleYBot = 0.92;
 
     // Bottom half = local player; top half = opponent (same on both phones).
-    const localX01 = role === "guest" ? state.paddles.guestX : state.paddles.hostX;
-    const remoteX01 = role === "guest" ? state.paddles.hostX : state.paddles.guestX;
+    const who = roleRef.current;
+    const localX01 = who === "guest" ? state.paddles.guestX : state.paddles.hostX;
+    const remoteX01 = who === "guest" ? state.paddles.hostX : state.paddles.guestX;
     const localX = localX01 * w;
     const remoteX = remoteX01 * w;
 
@@ -339,15 +429,15 @@ export default function FacePong() {
     // ball
     const bx = state.ball.x * w;
     const by = cy(state.ball.y);
-    const r = Math.max(6, Math.round(w * 0.018));
+    const ballR = Math.max(6, Math.round(w * 0.018));
     ctx.beginPath();
     ctx.fillStyle = "rgba(255,255,255,0.95)";
-    ctx.arc(bx, by, r, 0, Math.PI * 2);
+    ctx.arc(bx, by, ballR, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.beginPath();
     ctx.fillStyle = "rgba(130, 220, 255, 0.18)";
-    ctx.arc(bx, by, r * 2.2, 0, Math.PI * 2);
+    ctx.arc(bx, by, ballR * 2.2, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -366,7 +456,6 @@ export default function FacePong() {
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
         smoothedLocalPaddleRef.current = x01;
-        hostStateRef.current.paddles.hostX = x01;
       },
     });
 
@@ -396,6 +485,7 @@ export default function FacePong() {
 
     const conn = await waitForHostConnection(peer);
     dataRef.current = conn;
+    remotePeerIdRef.current = typeof conn.peer === "string" ? conn.peer : null;
     setOpponentConnected(true);
     setStatus("Opponent connected");
 
@@ -411,6 +501,9 @@ export default function FacePong() {
 
   async function connectAsGuest(rid: string) {
     cleanup();
+    lastGuestSeqRef.current = -1;
+    guestSnapPrevRef.current = null;
+    guestSnapCurrRef.current = null;
     setStatus("Joining…");
     setRole("guest");
     setOpponentConnected(false);
@@ -433,13 +526,29 @@ export default function FacePong() {
 
     const conn = await connectGuestWithRetry(peer, rid);
     dataRef.current = conn;
+    remotePeerIdRef.current = typeof conn.peer === "string" ? conn.peer : null;
     setOpponentConnected(true);
     setStatus("Opponent connected");
 
     conn.on("data", (raw: any) => {
       const msg = raw as HostToGuestMsg;
       if (msg.t === "state") {
-        hostStateRef.current = msg.state;
+        if (msg.seq <= lastGuestSeqRef.current) return;
+        lastGuestSeqRef.current = msg.seq;
+        lastStateRecvAtRef.current = performance.now();
+
+        const authoritative = cloneNetState(msg.state);
+        hostStateRef.current = authoritative;
+
+        const recvAt = performance.now();
+        if (msg.state.phase === "lobby") {
+          guestSnapPrevRef.current = null;
+          guestSnapCurrRef.current = { state: authoritative, seq: msg.seq, recvAt };
+        } else {
+          guestSnapPrevRef.current = guestSnapCurrRef.current;
+          guestSnapCurrRef.current = { state: authoritative, seq: msg.seq, recvAt };
+        }
+
         setRallyScore(msg.state.rallyScore);
         if (msg.state.phase === "playing") setUiPhase("playing");
         if (msg.state.phase === "gameover") setUiPhase("gameover");
@@ -530,7 +639,7 @@ export default function FacePong() {
     if (role === "host") {
       hostResetState();
       setUiPhase("lobby");
-      sendToGuest({ t: "state", state: hostStateRef.current });
+      broadcastAuthoritativeState();
     } else {
       setUiPhase("lobby");
     }
@@ -551,15 +660,15 @@ export default function FacePong() {
       const dt = clamp((n - last) / 1000, 0, 0.05);
       last = n;
 
-      // host runs authoritative sim
-      if (role === "host" && opponentConnected) {
+      // Host: sole physics + collision + score + game over. Broadcast ~display rate (raf ≈ 60 Hz).
+      if (roleRef.current === "host" && opponentConnected) {
         if (!lastHostTickRef.current) lastHostTickRef.current = n;
         hostTick(dt);
-        sendToGuest({ t: "state", state: hostStateRef.current });
+        broadcastAuthoritativeState();
       }
 
-      // guest & host draw current known state
-      draw(hostStateRef.current);
+      // Guest must not simulate; render interpolated authoritative state from host.
+      draw(getDrawState());
 
       raf = requestAnimationFrame(loop);
     };
@@ -607,6 +716,19 @@ export default function FacePong() {
             FacePong {opponentConnected ? "• 2P" : "• 1P"}
           </div>
         </div>
+
+        {FP_NET_DEBUG ? (
+          <div className={styles.debugNet}>
+            <div>auth host: {role === "host" ? "yes" : "no"}</div>
+            <div>local id: {clientId.slice(0, 10)}…</div>
+            <div>room: {roomId ?? "—"}</div>
+            <div>remote peer: {remotePeerIdRef.current ?? "—"}</div>
+            <div>
+              seq: {role === "host" ? hostSeqRef.current : lastGuestSeqRef.current} · sent{" "}
+              {lastSentAtRef.current?.toFixed(0) ?? "—"} · recv {lastStateRecvAtRef.current?.toFixed(0) ?? "—"}
+            </div>
+          </div>
+        ) : null}
 
         {showMenu || showMatchmaking ? (
           <div className={styles.overlay}>

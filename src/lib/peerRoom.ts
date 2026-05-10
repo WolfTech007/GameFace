@@ -10,7 +10,8 @@ export type RoomStatus =
   | { kind: "connected"; roomId: string; role: FacePongRole };
 
 export type HostToGuestMsg =
-  | { t: "state"; state: FacePongNetState }
+  /** Host is authoritative; `seq`/`sentAt` support ordering + guest interpolation (optional). */
+  | { t: "state"; state: FacePongNetState; seq: number; sentAt: number }
   | { t: "hello"; roomId: string };
 
 export type GuestToHostMsg = { t: "paddle"; x01: number } | { t: "ready" };
