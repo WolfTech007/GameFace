@@ -391,10 +391,12 @@ export default function StaringContest() {
           }
 
           if (phaseRef.current === "playing") {
-            const startWall = gameStartWallMsRef.current ?? now;
+            // gameStartWallMsRef is wall-clock ms (Date.now) from host game_go — must not mix with performance.now().
+            const wallNow = Date.now();
+            const startWallMs = gameStartWallMsRef.current;
 
-            if (gameStartWallMsRef.current) {
-              setTimerSeconds(Math.max(0, (now - gameStartWallMsRef.current) / 1000));
+            if (startWallMs != null) {
+              setTimerSeconds(Math.max(0, (wallNow - startWallMs) / 1000));
             }
 
             if (!landmarks) {
@@ -409,7 +411,7 @@ export default function StaringContest() {
               faceMissingSinceRef.current = null;
               setWarnFace(false);
 
-              const graceActive = now < startWall + GRACE_MS;
+              const graceActive = startWallMs != null && wallNow < startWallMs + GRACE_MS;
               if (!graceActive && ear != null && hostRoleRef.current && !gameEndedRef.current) {
                 const { isLikelyBlink } = blinkSmootherRef.current.update(ear, {
                   openThreshold: earThresholdRef.current,
