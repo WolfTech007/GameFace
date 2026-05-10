@@ -364,8 +364,8 @@ export default function RankIt() {
   }
 
   async function findMatch() {
-    const trimmed = clampName(name);
-    if (!trimmed || trimmed === "Player") {
+    const trimmed = name.trim().slice(0, 24);
+    if (!trimmed) {
       setStatus("Enter your name first.");
       return;
     }
@@ -604,55 +604,16 @@ export default function RankIt() {
                 </button>
               </>
             ) : gs.phase === "ranking" && gs.prompt ? (
-              <>
-                <div className={styles.promptTitle}>{gs.prompt.question}</div>
-                {myLocked && !bothLocked ? (
-                  <div className={styles.waitBanner}>Waiting for opponent…</div>
-                ) : null}
-
-                <div className={styles.rankList}>
-                  {draftOrder.map((itemIdx, rowIdx) => (
-                    <div
-                      key={`${itemIdx}-${rowIdx}`}
-                      className={`${styles.rankRow} ${dragIndex === rowIdx ? styles.rankRowDragging : ""}`}
-                      draggable={!myLocked}
-                      onDragStart={() => setDragIndex(rowIdx)}
-                      onDragEnd={() => setDragIndex(null)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => {
-                        if (myLocked || dragIndex === null) return;
-                        if (dragIndex !== rowIdx) swapDraft(dragIndex, rowIdx);
-                        setDragIndex(null);
-                      }}
-                    >
-                      <div className={styles.rankSlot}>{rowIdx + 1}</div>
-                      <div className={styles.rankLabel}>{gs.prompt.items[itemIdx]}</div>
-                      <div className={styles.rankMoves}>
-                        <button
-                          type="button"
-                          className={styles.rankMoveBtn}
-                          disabled={myLocked || rowIdx === 0}
-                          onClick={() => swapDraft(rowIdx, rowIdx - 1)}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.rankMoveBtn}
-                          disabled={myLocked || rowIdx >= draftOrder.length - 1}
-                          onClick={() => swapDraft(rowIdx, rowIdx + 1)}
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <button type="button" className={styles.lockBtn} disabled={myLocked} onClick={lockRanking}>
-                  {myLocked ? "Locked In" : "Lock In Ranking"}
-                </button>
-              </>
+              <RankingRoundPanel
+                prompt={gs.prompt}
+                draftOrder={draftOrder}
+                dragIndex={dragIndex}
+                setDragIndex={setDragIndex}
+                myLocked={myLocked}
+                bothLocked={bothLocked}
+                swapDraft={swapDraft}
+                lockRanking={lockRanking}
+              />
             ) : gs.phase === "reveal" && gs.prompt && gs.reveal ? (
               <div className={styles.revealShell}>
                 <div className={styles.bigScore}>
@@ -692,6 +653,80 @@ export default function RankIt() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function RankingRoundPanel(props: {
+  prompt: RankItPromptPayload;
+  draftOrder: number[];
+  dragIndex: number | null;
+  setDragIndex: (n: number | null) => void;
+  myLocked: boolean;
+  bothLocked: boolean;
+  swapDraft: (a: number, b: number) => void;
+  lockRanking: () => void;
+}) {
+  const {
+    prompt,
+    draftOrder,
+    dragIndex,
+    setDragIndex,
+    myLocked,
+    bothLocked,
+    swapDraft,
+    lockRanking,
+  } = props;
+
+  return (
+    <>
+      <div className={styles.promptTitle}>{prompt.question}</div>
+      {myLocked && !bothLocked ? (
+        <div className={styles.waitBanner}>Waiting for opponent…</div>
+      ) : null}
+
+      <div className={styles.rankList}>
+        {draftOrder.map((itemIdx, rowIdx) => (
+          <div
+            key={`${itemIdx}-${rowIdx}`}
+            className={`${styles.rankRow} ${dragIndex === rowIdx ? styles.rankRowDragging : ""}`}
+            draggable={!myLocked}
+            onDragStart={() => setDragIndex(rowIdx)}
+            onDragEnd={() => setDragIndex(null)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => {
+              if (myLocked || dragIndex === null) return;
+              if (dragIndex !== rowIdx) swapDraft(dragIndex, rowIdx);
+              setDragIndex(null);
+            }}
+          >
+            <div className={styles.rankSlot}>{rowIdx + 1}</div>
+            <div className={styles.rankLabel}>{prompt.items[itemIdx]}</div>
+            <div className={styles.rankMoves}>
+              <button
+                type="button"
+                className={styles.rankMoveBtn}
+                disabled={myLocked || rowIdx === 0}
+                onClick={() => swapDraft(rowIdx, rowIdx - 1)}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className={styles.rankMoveBtn}
+                disabled={myLocked || rowIdx >= draftOrder.length - 1}
+                onClick={() => swapDraft(rowIdx, rowIdx + 1)}
+              >
+                ↓
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button type="button" className={styles.lockBtn} disabled={myLocked} onClick={lockRanking}>
+        {myLocked ? "Locked In" : "Lock In Ranking"}
+      </button>
+    </>
   );
 }
 

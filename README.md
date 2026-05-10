@@ -31,6 +31,7 @@ To test on-device, run your dev server so it’s reachable on your LAN and open 
 - `/facepong`: **FacePong** (2-player webcam pong prototype)
 - `/staring-contest`: **Staring Contest** (don’t blink — 1v1 via matchmaking + WebRTC)
 - `/facecard`: **FaceCard** (Heads Up–style guess-your-celebrity; 1v1 matchmaking + WebRTC)
+- `/rankit`: **Rank It** (same-time rankings vs a stranger; 1v1 matchmaking + WebRTC)
 
 ## FaceBreaker (how to play)
 
@@ -61,7 +62,7 @@ To test on-device, run your dev server so it’s reachable on your LAN and open 
 
 ### Matchmaking note
 
-The queue APIs (`/api/staring-contest/queue`, `/api/facepong/queue`, `/api/facecard/queue`) keep separate **in-memory** waiting lists. That works on a **single** Node/dev server; on **serverless** with many instances, pair two browsers using **the same deployment** at the same time, or replace the queues with Redis/KV later.
+The queue APIs (`/api/staring-contest/queue`, `/api/facepong/queue`, `/api/facecard/queue`, `/api/rankit/queue`) keep separate **in-memory** waiting lists. That works on a **single** Node/dev server; on **serverless** with many instances, pair two browsers using **the same deployment** at the same time, or replace the queues with Redis/KV later.
 
 ### Environment variables
 
