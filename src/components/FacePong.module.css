@@ -129,6 +129,32 @@
   word-break: break-all;
 }
 
+/* Tiny A/B labels when FP_UI_DEBUG (see FacePong.tsx). */
+.debugPlayerTag {
+  position: absolute;
+  left: 8px;
+  z-index: 14;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(140, 200, 255, 0.45);
+  color: #dbeafe;
+  pointer-events: none;
+  max-width: calc(100% - 16px);
+}
+
+.debugPlayerTagTop {
+  top: 8px;
+}
+
+.debugPlayerTagBottom {
+  bottom: 8px;
+}
+
 .debugWorld {
   position: absolute;
   left: 6px;

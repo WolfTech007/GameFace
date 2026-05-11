@@ -714,6 +714,17 @@ export default function FacePong() {
           </div>
         </div>
 
+        {FP_UI_DEBUG && role ? (
+          <>
+            <div className={`${styles.debugPlayerTag} ${styles.debugPlayerTagTop}`} title="World top paddle / opponent feed">
+              {role === "host" ? "Player B · opponent" : "Player A · opponent"}
+            </div>
+            <div className={`${styles.debugPlayerTag} ${styles.debugPlayerTagBottom}`} title="World bottom paddle / your feed">
+              {role === "host" ? "Player A · you" : "Player B · you"}
+            </div>
+          </>
+        ) : null}
+
         {FP_UI_DEBUG ? (
           <div className={styles.debugWorld}>
             <div>
