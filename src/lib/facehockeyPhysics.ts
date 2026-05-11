@@ -14,7 +14,8 @@ export const FH = {
   X_MIN: 0.08,
   X_MAX: 0.92,
   PUCK_R: 0.036,
-  MALLET_R: 0.054 * 1.3,
+  /** Visual + hitbox (same); +30% vs prior size */
+  MALLET_R: 0.054 * 1.3 * 1.3,
   GOAL_HALF_W: 0.11,
   /** Puck center crosses into slot → goal */
   TOP_GOAL_Y: 0.032,
@@ -23,9 +24,13 @@ export const FH = {
   CORNER_FILLET_R: 0.045,
   /** Height / width of playfield (canvas); collision uses min-dimension radii like the draw loop */
   PLAYFIELD_H_OVER_W: 2,
+  /** Normalized push inward after rail hit — keeps puck out of the boundary strip */
+  WALL_PUSH_NORM: 0.002,
+  /** Floor while puck is live (host physics only); avoids permanent crawl / exact zeros */
+  MIN_PUCK_SPEED_ACTIVE: 0.032,
   /** Prevent puck from becoming "dead" after mallet hits */
   MIN_SPEED_AFTER_HIT: 0.22,
-  FRICTION: 0.99585,
+  FRICTION: 0.995,
   MAX_SPEED: 1.1,
   RALLY_RAMP_S: 48,
   MAX_SPEED_MULT: 1.55,
@@ -53,6 +58,26 @@ function scaledSepDir(dx: number, dy: number, wy: number): { x: number; y: numbe
   return { x: dx / D, y: dy / D };
 }
 
+/** Mutable anti-stuck timers (host-side only; never synced). */
+export type FaceHockeyAntiStuckScratch = {
+  lowNearCornerSec: number;
+  sameCornerSec: number;
+  lastCornerKey: string;
+};
+
+function reflectVelocity(
+  vx: number,
+  vy: number,
+  nx: number,
+  ny: number,
+  restitution: number,
+): { vx: number; vy: number } {
+  const vn = vx * nx + vy * ny;
+  if (vn >= 0) return { vx, vy };
+  const j = -(1 + restitution) * vn;
+  return { vx: vx + j * nx, vy: vy + j * ny };
+}
+
 /**
  * Host-only integration. Mutates `s.puck` and mallet copies on `s`.
  * Does **not** mutate scores — caller applies goals.
@@ -66,6 +91,7 @@ export function hostStepPhysics(
   prevB: { x: number; y: number },
   rallyElapsedSec: number,
   playfieldHOverW: number = FH.PLAYFIELD_H_OVER_W,
+  antiScratch?: FaceHockeyAntiStuckScratch | null,
 ): { goal: "A" | "B" | null } {
   s.malletA = { ...malletA };
   s.malletB = { ...malletB };
@@ -75,7 +101,7 @@ export function hostStepPhysics(
   }
 
   const wy = playfieldHOverW;
-  const eps = 0.0004;
+  const push = FH.WALL_PUSH_NORM;
 
   let { x, y, vx, vy } = s.puck;
   const pr = FH.PUCK_R;
@@ -112,33 +138,71 @@ export function hostStepPhysics(
     return { goal: "B" };
   }
 
-  // Side walls
-  if (x < wi + pr) {
-    x = wi + pr + eps;
-    vx = Math.abs(vx) * FH.RESTITUTION_WALL;
-  } else if (x > 1 - wi - pr) {
-    x = 1 - wi - pr - eps;
-    vx = -Math.abs(vx) * FH.RESTITUTION_WALL;
-  }
-
   const goalL = 0.5 - FH.GOAL_HALF_W;
   const goalR = 0.5 + FH.GOAL_HALF_W;
 
+  const goalTopOpenAt = (gx: number) => gx > goalL - pr && gx < goalR + pr;
+  const topRailBlocks = (gx: number, gy: number) => gy < wi + pr && !goalTopOpenAt(gx);
+  const botRailBlocks = (gx: number, gy: number) => gy > 1 - wi - pr && !goalTopOpenAt(gx);
+
+  const cornerKickPad = push * 2.2;
+  const eWall = FH.RESTITUTION_WALL;
+
+  // Two walls at once → diagonal escape from sharp corner (radius-aware puck center limits)
+  const penL = x < wi + pr;
+  const penR = x > 1 - wi - pr;
+  const penT = topRailBlocks(x, y);
+  const penB = botRailBlocks(x, y);
+
+  if (penL && penT && x <= goalL - pr * 0.35) {
+    x = wi + pr + cornerKickPad;
+    y = wi + pr + cornerKickPad;
+    const r = reflectVelocity(vx, vy, Math.SQRT1_2, Math.SQRT1_2, eWall);
+    vx = r.vx;
+    vy = r.vy;
+  } else if (penR && penT && x >= goalR + pr * 0.35) {
+    x = 1 - wi - pr - cornerKickPad;
+    y = wi + pr + cornerKickPad;
+    const r = reflectVelocity(vx, vy, -Math.SQRT1_2, Math.SQRT1_2, eWall);
+    vx = r.vx;
+    vy = r.vy;
+  } else if (penL && penB && x <= goalL - pr * 0.35) {
+    x = wi + pr + cornerKickPad;
+    y = 1 - wi - pr - cornerKickPad;
+    const r = reflectVelocity(vx, vy, Math.SQRT1_2, -Math.SQRT1_2, eWall);
+    vx = r.vx;
+    vy = r.vy;
+  } else if (penR && penB && x >= goalR + pr * 0.35) {
+    x = 1 - wi - pr - cornerKickPad;
+    y = 1 - wi - pr - cornerKickPad;
+    const r = reflectVelocity(vx, vy, -Math.SQRT1_2, -Math.SQRT1_2, eWall);
+    vx = r.vx;
+    vy = r.vy;
+  }
+
+  // Side walls
+  if (x < wi + pr) {
+    x = wi + pr + push;
+    vx = Math.abs(vx) * eWall;
+  } else if (x > 1 - wi - pr) {
+    x = 1 - wi - pr - push;
+    vx = -Math.abs(vx) * eWall;
+  }
+
   // Top rail (outside goal mouth)
-  if (y < wi + pr && !(x > goalL - pr && x < goalR + pr)) {
-    y = wi + pr + eps;
-    vy = Math.abs(vy) * FH.RESTITUTION_WALL;
+  if (topRailBlocks(x, y)) {
+    y = wi + pr + push;
+    vy = Math.abs(vy) * eWall;
   }
 
   // Bottom rail (outside goal mouth)
-  if (y > 1 - wi - pr && !(x > goalL - pr && x < goalR + pr)) {
-    y = 1 - wi - pr - eps;
-    vy = -Math.abs(vy) * FH.RESTITUTION_WALL;
+  if (botRailBlocks(x, y)) {
+    y = 1 - wi - pr - push;
+    vy = -Math.abs(vy) * eWall;
   }
 
   const Rf = FH.CORNER_FILLET_R;
   const cornerMin = Rf + pr;
-  const eWall = FH.RESTITUTION_WALL;
 
   const resolveRailCorner = (
     ox: number,
@@ -170,18 +234,18 @@ export function hostStepPhysics(
 
   // Corner resolve can nudge past a rail plane — clamp again
   if (x < wi + pr) {
-    x = wi + pr;
+    x = wi + pr + push;
     vx = Math.abs(vx) * eWall;
   } else if (x > 1 - wi - pr) {
-    x = 1 - wi - pr;
+    x = 1 - wi - pr - push;
     vx = -Math.abs(vx) * eWall;
   }
-  if (y < wi + pr && !(x > goalL - pr && x < goalR + pr)) {
-    y = wi + pr;
+  if (topRailBlocks(x, y)) {
+    y = wi + pr + push;
     vy = Math.abs(vy) * eWall;
   }
-  if (y > 1 - wi - pr && !(x > goalL - pr && x < goalR + pr)) {
-    y = 1 - wi - pr;
+  if (botRailBlocks(x, y)) {
+    y = 1 - wi - pr - push;
     vy = -Math.abs(vy) * eWall;
   }
 
@@ -222,24 +286,96 @@ export function hostStepPhysics(
   resolveRailCorner(1 - wi - pr - Rf, 1 - wi - pr - Rf, x >= goalR + pr, (dx, dy) => dx > 0 && dy > 0);
 
   if (x < wi + pr) {
-    x = wi + pr;
+    x = wi + pr + push;
     vx = Math.abs(vx) * eWall;
   } else if (x > 1 - wi - pr) {
-    x = 1 - wi - pr;
+    x = 1 - wi - pr - push;
     vx = -Math.abs(vx) * eWall;
   }
-  if (y < wi + pr && !(x > goalL - pr && x < goalR + pr)) {
-    y = wi + pr;
+  if (topRailBlocks(x, y)) {
+    y = wi + pr + push;
     vy = Math.abs(vy) * eWall;
   }
-  if (y > 1 - wi - pr && !(x > goalL - pr && x < goalR + pr)) {
-    y = 1 - wi - pr;
+  if (botRailBlocks(x, y)) {
+    y = 1 - wi - pr - push;
     vy = -Math.abs(vy) * eWall;
   }
 
-  sp = length(vx, vy);
-  if (sp > maxSp) {
-    const sc = maxSp / sp;
+  const classifyCornerKey = (): string => {
+    const band = 0.062;
+    const nearL = x < wi + pr + band;
+    const nearR = x > 1 - wi - pr - band;
+    const nearT = y < wi + pr + band && !goalTopOpenAt(x);
+    const nearB = y > 1 - wi - pr - band && !goalTopOpenAt(x);
+    if (nearL && nearT && x <= goalL - pr * 0.2) return "tl";
+    if (nearR && nearT && x >= goalR + pr * 0.2) return "tr";
+    if (nearL && nearB && x <= goalL - pr * 0.2) return "bl";
+    if (nearR && nearB && x >= goalR + pr * 0.2) return "br";
+    return "";
+  };
+
+  const kickTowardCenter = (speed: number, angleJitter: number) => {
+    const dx = 0.5 - x;
+    const dy = 0.5 - y;
+    const base = Math.atan2(dy, dx);
+    const ang = base + (Math.random() * 2 - 1) * angleJitter;
+    vx += Math.cos(ang) * speed;
+    vy += Math.sin(ang) * speed;
+  };
+
+  const scratch = antiScratch;
+  if (scratch) {
+    const ck = classifyCornerKey();
+    const spNear = length(vx, vy);
+    const inCorner = ck !== "";
+    const crawl = spNear < 0.03;
+
+    if (inCorner && crawl) scratch.lowNearCornerSec += dt;
+    else scratch.lowNearCornerSec = 0;
+
+    if (scratch.lowNearCornerSec > 0.5) {
+      scratch.lowNearCornerSec = 0;
+      kickTowardCenter(0.075, 0.42);
+    }
+
+    if (ck && inCorner) {
+      if (ck === scratch.lastCornerKey) scratch.sameCornerSec += dt;
+      else {
+        scratch.lastCornerKey = ck;
+        scratch.sameCornerSec = 0;
+      }
+    } else {
+      scratch.sameCornerSec = 0;
+      scratch.lastCornerKey = "";
+    }
+
+    if (scratch.sameCornerSec > 1 && ck && inCorner) {
+      scratch.sameCornerSec = 0;
+      scratch.lastCornerKey = "";
+      const dx = 0.5 - x;
+      const dy = 0.5 - y;
+      const L = Math.hypot(dx, dy) || 1;
+      x = clamp(x + (dx / L) * 0.024, wi + pr + push, 1 - wi - pr - push);
+      y = clamp(y + (dy / L) * 0.024, wi + pr + push, 1 - wi - pr - push);
+      kickTowardCenter(0.14, 0.65);
+    }
+  }
+
+  let spFinal = length(vx, vy);
+  const minLive = FH.MIN_PUCK_SPEED_ACTIVE;
+  if (spFinal < 1e-7) {
+    const ang = Math.random() * Math.PI * 2;
+    vx = Math.cos(ang) * minLive;
+    vy = Math.sin(ang) * minLive;
+    spFinal = minLive;
+  } else if (spFinal < minLive) {
+    vx *= minLive / spFinal;
+    vy *= minLive / spFinal;
+    spFinal = minLive;
+  }
+
+  if (spFinal > maxSp) {
+    const sc = maxSp / spFinal;
     vx *= sc;
     vy *= sc;
   }
@@ -272,14 +408,13 @@ export function hostMalletFromNoseInBounds(
 export function guestMalletFromNoseVisual(
   nx: number,
   ny: number,
-  b?: { xMin: number; xMax: number; yMin: number; yMax: number; centerY?: number },
+  b?: { xMin: number; xMax: number; yMin: number; yMax: number },
 ): { x: number; y: number } {
   const xv = clamp(1 - nx, 0, 1);
   const xMin = b?.xMin ?? FH.X_MIN;
   const xMax = b?.xMax ?? FH.X_MAX;
   const yMin = b?.yMin ?? FH.B_Y_MIN;
   const yMax = b?.yMax ?? FH.B_Y_MAX;
-  const centerY = b?.centerY ?? 0.5;
 
   const x = clamp(xv, xMin, xMax);
   /**
@@ -287,6 +422,6 @@ export function guestMalletFromNoseVisual(
    * Player B’s overlay is CSS-rotated 180°; invert ny vs the naive linear map so vertical tracks nose.
    */
   const nyTip = clamp(ny + NOSE_TIP_Y_OFFSET, 0, 1);
-  const y = clamp(yMax - nyTip * (yMax - yMin), yMin, Math.min(yMax, centerY));
+  const y = clamp(yMax - nyTip * (yMax - yMin), yMin, yMax);
   return { x, y };
 }

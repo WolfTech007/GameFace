@@ -19,6 +19,7 @@ import {
 } from "@/lib/facehockeyProtocol";
 import {
   FH,
+  type FaceHockeyAntiStuckScratch,
   guestMalletFromNoseVisual,
   hostMalletFromNoseInBounds,
   hostStepPhysics,
@@ -35,23 +36,17 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
-
 function getMalletBounds(canvas: HTMLCanvasElement | null) {
   const wi = FH.WALL_INSET;
   const mr = FH.MALLET_R;
   const w = canvas?.width ?? 1;
   const h = canvas?.height ?? 1;
-  const centerBufferPx = 3;
-  const bufY = clamp(centerBufferPx / Math.max(1, h), 0.0, 0.02);
 
-  // Legal halves: B(top) [top wall .. center], A(bottom) [center .. bottom wall]
-  const aMinY = 0.5 + bufY;
+  // Legal halves only — exact half-plane split at y = 0.5 (plus arena rail inset / mallet radius).
+  const aMinY = 0.5;
   const aMaxY = 1 - wi - mr;
   const bMinY = wi + mr;
-  const bMaxY = 0.5 - bufY;
+  const bMaxY = 0.5;
 
   const xMin = FH.X_MIN;
   const xMax = FH.X_MAX;
@@ -65,9 +60,14 @@ function getMalletBounds(canvas: HTMLCanvasElement | null) {
     aMaxY: clamp(aMaxY, 0, 1),
     bMinY: clamp(bMinY, 0, 1),
     bMaxY: clamp(bMaxY, 0, 1),
-    centerY: 0.5,
     wy,
   };
+}
+
+function resetPuckAntiStuck(scratch: FaceHockeyAntiStuckScratch) {
+  scratch.lowNearCornerSec = 0;
+  scratch.sameCornerSec = 0;
+  scratch.lastCornerKey = "";
 }
 
 function makeClientId() {
@@ -145,10 +145,13 @@ export default function FaceHockey() {
   const prevMalletBRef = useRef({ x: 0.5, y: 0.22 });
 
   const localNoseRef = useRef({ x: 0.5, y: 0.5 });
-  const localNoseSmoothedRef = useRef({ x: 0.5, y: 0.5 });
   const rallyStartMsRef = useRef<number | null>(null);
 
-  const antiStuckSecRef = useRef(0);
+  const puckAntiStuckRef = useRef<FaceHockeyAntiStuckScratch>({
+    lowNearCornerSec: 0,
+    sameCornerSec: 0,
+    lastCornerKey: "",
+  });
 
   const lastGuestSeqRef = useRef(-1);
   const lastStateRecvAtRef = useRef<number | null>(null);
@@ -257,6 +260,7 @@ export default function FaceHockey() {
     hostStateRef.current = initialFaceHockeyState();
     guestMalletRef.current = { x: 0.5, y: 0.22 };
     rallyStartMsRef.current = null;
+    resetPuckAntiStuck(puckAntiStuckRef.current);
   }
 
   function sendToGuest(msg: HostToGuestFHMsg) {
@@ -294,11 +298,13 @@ export default function FaceHockey() {
     s.puck = { x: 0.5, y: 0.5, vx, vy };
     s.puckFrozen = false;
     rallyStartMsRef.current = nowMs();
+    resetPuckAntiStuck(puckAntiStuckRef.current);
   }
 
   /** Opening face-off or goal restart — same 3·2·1·GO chain (host-only timers). */
   function scheduleFaceOff(afterGoal: boolean, scorer?: "A" | "B") {
     clearScheduledTimers();
+    resetPuckAntiStuck(puckAntiStuckRef.current);
     const s = hostStateRef.current;
     resetPuckCenter(s);
     s.puckFrozen = true;
@@ -368,16 +374,12 @@ export default function FaceHockey() {
     if (s.phase === "gameover") return;
 
     const b = getMalletBounds(canvasRef.current);
-    const targetA = hostMalletFromNoseInBounds(localNoseSmoothedRef.current.x, localNoseSmoothedRef.current.y, {
+    const ma = hostMalletFromNoseInBounds(localNoseRef.current.x, localNoseRef.current.y, {
       xMin: b.xMin,
       xMax: b.xMax,
       yMin: b.aMinY,
       yMax: b.aMaxY,
     });
-    const ma = {
-      x: lerp(prevMalletARef.current.x, targetA.x, 0.3),
-      y: lerp(prevMalletARef.current.y, targetA.y, 0.3),
-    };
 
     // Guest mallet already arrives in canonical space; clamp to its legal half only.
     const mb = {
@@ -392,9 +394,13 @@ export default function FaceHockey() {
     const pb = { ...prevMalletBRef.current };
 
     const before = cloneFaceHockeyState(s);
-    const canvas = canvasRef.current;
     const wy = b.wy;
-    const hit = hostStepPhysics(s, dt, ma, mb, pa, pb, rallySec, wy);
+
+    if (s.puckFrozen) {
+      resetPuckAntiStuck(puckAntiStuckRef.current);
+    }
+
+    const hit = hostStepPhysics(s, dt, ma, mb, pa, pb, rallySec, wy, puckAntiStuckRef.current);
 
     prevMalletARef.current = { ...ma };
     prevMalletBRef.current = { ...mb };
@@ -404,30 +410,6 @@ export default function FaceHockey() {
       hostHandleGoal(hit.goal);
       return;
     }
-
-    // Corner/wall anti-stuck: if very slow near wall for >1.5s, gently nudge toward center.
-    const sp = Math.hypot(s.puck.vx, s.puck.vy);
-    const nearWall =
-      s.puck.x < FH.WALL_INSET + FH.PUCK_R * 1.35 ||
-      s.puck.x > 1 - FH.WALL_INSET - FH.PUCK_R * 1.35 ||
-      s.puck.y < FH.WALL_INSET + FH.PUCK_R * 1.35 ||
-      s.puck.y > 1 - FH.WALL_INSET - FH.PUCK_R * 1.35;
-    if (sp < 0.02 && nearWall) antiStuckSecRef.current += dt;
-    else antiStuckSecRef.current = 0;
-
-    if (antiStuckSecRef.current > 1.5) {
-      antiStuckSecRef.current = 0;
-      const dx = 0.5 - s.puck.x;
-      const dy = 0.5 - s.puck.y;
-      const L = Math.hypot(dx, dy) || 1;
-      const nx = dx / L;
-      const ny = dy / L;
-      s.puck.x = clamp(s.puck.x + nx * 0.002, 0, 1);
-      s.puck.y = clamp(s.puck.y + ny * 0.002, 0, 1);
-      const kick = 0.08;
-      s.puck.vx += nx * kick;
-      s.puck.vy += ny * kick;
-    }
   }
 
   function hostResetLobby() {
@@ -436,6 +418,7 @@ export default function FaceHockey() {
     rallyStartMsRef.current = null;
     prevMalletARef.current = { x: 0.5, y: 0.78 };
     prevMalletBRef.current = { x: 0.5, y: 0.22 };
+    resetPuckAntiStuck(puckAntiStuckRef.current);
     broadcastAuthoritativeState();
   }
 
@@ -602,12 +585,6 @@ export default function FaceHockey() {
       videoEl: localVideoRef.current!,
       onNoseXY: (x, y) => {
         localNoseRef.current = { x, y };
-        // Smooth raw MediaPipe jitter without adding much lag
-        const a = 0.28;
-        localNoseSmoothedRef.current = {
-          x: lerp(localNoseSmoothedRef.current.x, x, a),
-          y: lerp(localNoseSmoothedRef.current.y, y, a),
-        };
       },
     });
 
@@ -676,25 +653,13 @@ export default function FaceHockey() {
       videoEl: localVideoRef.current!,
       onNoseXY: (x, y) => {
         localNoseRef.current = { x, y };
-        const a = 0.28;
-        localNoseSmoothedRef.current = {
-          x: lerp(localNoseSmoothedRef.current.x, x, a),
-          y: lerp(localNoseSmoothedRef.current.y, y, a),
-        };
         const b = getMalletBounds(canvasRef.current);
-        const target = guestMalletFromNoseVisual(localNoseSmoothedRef.current.x, localNoseSmoothedRef.current.y, {
+        const m = guestMalletFromNoseVisual(x, y, {
           xMin: b.xMin,
           xMax: b.xMax,
           yMin: b.bMinY,
           yMax: b.bMaxY,
-          centerY: b.centerY,
         });
-        // Lerp mallet output a bit so the host doesn't see jittery "teleports"
-        const m = {
-          x: lerp(prevMalletBRef.current.x, target.x, 0.3),
-          y: lerp(prevMalletBRef.current.y, target.y, 0.3),
-        };
-        prevMalletBRef.current = { ...m };
         sendToHost({ t: "fh_mallet", x: m.x, y: m.y });
       },
     });
@@ -910,14 +875,24 @@ export default function FaceHockey() {
               {role === "host"
                 ? (() => {
                     const b = getMalletBounds(canvasRef.current);
-                    const m = hostMalletFromNoseInBounds(
-                      localNoseSmoothedRef.current.x,
-                      localNoseSmoothedRef.current.y,
-                      { xMin: b.xMin, xMax: b.xMax, yMin: b.aMinY, yMax: b.aMaxY },
-                    );
+                    const m = hostMalletFromNoseInBounds(localNoseRef.current.x, localNoseRef.current.y, {
+                      xMin: b.xMin,
+                      xMax: b.xMax,
+                      yMin: b.aMinY,
+                      yMax: b.aMaxY,
+                    });
                     return `${m.x.toFixed(3)}, ${m.y.toFixed(3)}`;
                   })()
-                : `${guestMalletFromNoseVisual(localNoseRef.current.x, localNoseRef.current.y).x.toFixed(3)}, ${guestMalletFromNoseVisual(localNoseRef.current.x, localNoseRef.current.y).y.toFixed(3)}`}
+                : (() => {
+                    const bb = getMalletBounds(canvasRef.current);
+                    const gm = guestMalletFromNoseVisual(localNoseRef.current.x, localNoseRef.current.y, {
+                      xMin: bb.xMin,
+                      xMax: bb.xMax,
+                      yMin: bb.bMinY,
+                      yMax: bb.bMaxY,
+                    });
+                    return `${gm.x.toFixed(3)}, ${gm.y.toFixed(3)}`;
+                  })()}
             </div>
             <div>
               remoteMallet:{" "}
