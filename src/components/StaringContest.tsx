@@ -36,6 +36,33 @@ const FACE_LOSE_AFTER_MS = 1000;
 const BLINK_FRAMES = 3;
 const QUEUE_POLL_MS = 600;
 
+const VIDEO_DEBUG =
+  typeof process !== "undefined" && process.env.NODE_ENV === "development";
+
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
+
+/** Same retry pattern as FaceCard / FacePong guest data connection. */
+async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>[0], roomId: string) {
+  let lastErr: unknown;
+  for (let i = 0; i < 30; i++) {
+    try {
+      await sleep(i === 0 ? 700 : 350);
+      const conn = await Promise.race([
+        connectGuestToHost(peer, roomId),
+        new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error("connect timeout")), 12000),
+        ),
+      ]);
+      return conn;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Could not connect to opponent.");
+}
+
 /** MM:SS:CC stopwatch from elapsed ms (centiseconds = hundredths of a second). */
 function formatStopwatchMs(elapsedMs: number): string {
   const e = Math.max(0, Math.floor(elapsedMs));
@@ -71,6 +98,17 @@ export default function StaringContest() {
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const dataConnOpenRef = useRef(false);
+
+  const [dataChannelReady, setDataChannelReady] = useState(false);
+  const [remoteVideoPlaying, setRemoteVideoPlaying] = useState(false);
+  const [localCameraReady, setLocalCameraReady] = useState(false);
+  const [hasRemoteStream, setHasRemoteStream] = useState(false);
+  /** Bumped when returning to lobby so the host countdown effect can re-run after session setup. */
+  const [lobbyEpoch, setLobbyEpoch] = useState(0);
+  /** Dev-only: forces re-read of video debug fields. */
+  const [, setVideoDebugTick] = useState(0);
 
   const [phase, setPhase] = useState<Phase>("intro");
   const phaseRef = useRef<Phase>("intro");
@@ -131,6 +169,91 @@ export default function StaringContest() {
     if (c?.open) c.send(msg);
   }, []);
 
+  const bumpVideoDebug = useCallback(() => {
+    if (VIDEO_DEBUG) setVideoDebugTick((x) => x + 1);
+  }, []);
+
+  /**
+   * Attach remote MediaStream to the top video (FacePong / FaceCard pattern).
+   * - Keeps video tracks enabled.
+   * - `muted` on the <video> element (not the track) avoids iOS/Safari autoplay blocking; picture still renders.
+   */
+  const attachRemoteStream = useCallback(
+    (remoteStream: MediaStream, source: string) => {
+      remoteStreamRef.current = remoteStream;
+      setHasRemoteStream(true);
+      for (const t of remoteStream.getVideoTracks()) {
+        t.enabled = true;
+      }
+      if (VIDEO_DEBUG) {
+        const vt = remoteStream.getVideoTracks();
+        console.log("[StaringContest] remote stream received", source, {
+          streamId: remoteStream.id,
+          videoTracks: vt.length,
+          audioTracks: remoteStream.getAudioTracks().length,
+        });
+        for (const t of vt) {
+          console.log(
+            "[StaringContest] remote video track",
+            t.id,
+            t.label,
+            "enabled",
+            t.enabled,
+            "muted",
+            t.muted,
+            "readyState",
+            t.readyState,
+          );
+        }
+      }
+
+      const attachToEl = (target: HTMLVideoElement) => {
+        target.srcObject = remoteStream;
+        if (VIDEO_DEBUG) console.log("[StaringContest] remote video element attach", source);
+        void target
+          .play()
+          .then(() => {
+            if (VIDEO_DEBUG) console.log("[StaringContest] remote video playing", source);
+          })
+          .catch((e) => {
+            console.warn("[StaringContest] remote video play()", source, e);
+          });
+      };
+
+      let el = remoteVideoRef.current;
+      if (!el) {
+        if (VIDEO_DEBUG) {
+          console.warn("[StaringContest] attachRemote: no video element yet, retry frame", source);
+        }
+        requestAnimationFrame(() => {
+          el = remoteVideoRef.current;
+          if (!el) return;
+          attachToEl(el);
+          bumpVideoDebug();
+        });
+        return;
+      }
+      attachToEl(el);
+      bumpVideoDebug();
+    },
+    [bumpVideoDebug],
+  );
+
+  function whenDataConnOpen(conn: any, onOpen: () => void) {
+    dataConnOpenRef.current = !!conn.open;
+    if (conn.open) {
+      setDataChannelReady(true);
+      onOpen();
+    } else {
+      setDataChannelReady(false);
+      conn.on("open", () => {
+        dataConnOpenRef.current = true;
+        setDataChannelReady(true);
+        onOpen();
+      });
+    }
+  }
+
   function cleanupPeer() {
     if (pollTimerRef.current) {
       window.clearInterval(pollTimerRef.current);
@@ -143,6 +266,15 @@ export default function StaringContest() {
     }
     peerRef.current = null;
     dataRef.current = null;
+    dataConnOpenRef.current = false;
+    remoteStreamRef.current = null;
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+    setHasRemoteStream(false);
+    setRemoteVideoPlaying(false);
+    setDataChannelReady(false);
+    setLocalCameraReady(false);
     const s = streamRef.current;
     if (s) {
       for (const t of s.getTracks()) t.stop();
@@ -161,7 +293,10 @@ export default function StaringContest() {
   }
 
   async function ensureCamera() {
-    if (streamRef.current) return streamRef.current;
+    if (streamRef.current) {
+      setLocalCameraReady(streamRef.current.getVideoTracks().length > 0);
+      return streamRef.current;
+    }
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -176,6 +311,7 @@ export default function StaringContest() {
       },
     });
     streamRef.current = stream;
+    setLocalCameraReady(stream.getVideoTracks().length > 0);
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
       await localVideoRef.current.play();
@@ -236,6 +372,7 @@ export default function StaringContest() {
     setPhase("peer_setup");
     await setupPeer(roomId, r);
     setPhase("lobby");
+    setLobbyEpoch((e) => e + 1);
   }
 
   function resolveLoss(fromHost: boolean) {
@@ -286,6 +423,7 @@ export default function StaringContest() {
     setLocalReady(false);
     setRemoteReady(false);
     setPhase("lobby");
+    setLobbyEpoch((e) => e + 1);
 
     sendNet({ t: "sc_rematch_go", matchEpoch: epoch });
     sendNet({
@@ -315,6 +453,7 @@ export default function StaringContest() {
     setLocalReady(false);
     setRemoteReady(false);
     setPhase("lobby");
+    setLobbyEpoch((e) => e + 1);
     sendNet({ t: "ready", ready: false });
   }
 
@@ -439,10 +578,10 @@ export default function StaringContest() {
       peer.on("call", (call: any) => {
         call.answer(stream);
         call.on("stream", (remoteStream: MediaStream) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-            void remoteVideoRef.current.play();
-          }
+          attachRemoteStream(remoteStream, "host_call_answer");
+        });
+        call.on("error", (err: unknown) => {
+          console.warn("[StaringContest] host media connection error", err);
         });
       });
 
@@ -453,43 +592,43 @@ export default function StaringContest() {
 
       conn.on("close", () => {
         setOpponentLeftMatch(true);
+        setDataChannelReady(false);
       });
 
-      conn.on("open", () => {
+      whenDataConnOpen(conn, () => {
         sendNet({ t: "hello", name: nameRef.current || "Player" });
       });
     } else {
       const peer = await createGuestPeer();
       peerRef.current = peer;
 
-      guestAnswerCalls(peer, stream, (incoming) => {
-        incoming.on("stream", (remoteStream: MediaStream) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-            void remoteVideoRef.current.play();
-          }
-        });
-      });
-
-      const conn = await connectGuestToHost(peer, roomId, { reliable: true });
+      const conn = await connectGuestWithRetry(peer, roomId);
       dataRef.current = conn;
       setOpponentLeftMatch(false);
       wireData(conn, false);
 
       conn.on("close", () => {
         setOpponentLeftMatch(true);
+        setDataChannelReady(false);
       });
 
-      conn.on("open", () => {
+      whenDataConnOpen(conn, () => {
         sendNet({ t: "hello", name: nameRef.current || "Player" });
       });
 
+      /* FacePong order: data channel first, outbound call, then answer incoming (symmetric/media). */
       const call = peer.call(roomId, stream);
       call.on("stream", (remoteStream: MediaStream) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          void remoteVideoRef.current.play();
-        }
+        attachRemoteStream(remoteStream, "guest_call_out");
+      });
+      call.on("error", (err: unknown) => {
+        console.warn("[StaringContest] guest outbound media error", err);
+      });
+
+      guestAnswerCalls(peer, stream, (incoming) => {
+        incoming.on("stream", (remoteStream: MediaStream) => {
+          attachRemoteStream(remoteStream, "guest_call_in");
+        });
       });
     }
   }
@@ -541,7 +680,13 @@ export default function StaringContest() {
     return () => {
       cancelled = true;
     };
-  }, [localReady, remoteReady, role, sendNet]);
+  }, [localReady, remoteReady, role, sendNet, lobbyEpoch]);
+
+  useEffect(() => {
+    if (!VIDEO_DEBUG) return;
+    const id = window.setInterval(() => setVideoDebugTick((x) => x + 1), 400);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -674,6 +819,19 @@ export default function StaringContest() {
 
       {showGameChrome ? (
         <div className={styles.gameWrap}>
+          {VIDEO_DEBUG ? (
+            <div className={styles.debugOverlay} aria-hidden>
+              <div>localCameraReady: {String(localCameraReady)}</div>
+              <div>remotePeerConnected: {String(dataChannelReady)}</div>
+              <div>remoteStreamExists: {String(hasRemoteStream)}</div>
+              <div>remoteVideoTracks: {remoteStreamRef.current?.getVideoTracks().length ?? 0}</div>
+              <div>remoteVideoPlaying: {String(remoteVideoPlaying)}</div>
+              <div>myReady: {String(localReady)}</div>
+              <div>opponentReady: {String(remoteReady)}</div>
+              <div>amIHost: {String(role === "host")}</div>
+              <div>gameState: {phase}</div>
+            </div>
+          ) : null}
           <div className={styles.splitStage}>
             <div className={styles.splitTop}>
               <video
@@ -681,6 +839,16 @@ export default function StaringContest() {
                 className={`${styles.video} ${styles.videoRemote}`}
                 playsInline
                 autoPlay
+                muted
+                onPlaying={() => {
+                  setRemoteVideoPlaying(true);
+                  bumpVideoDebug();
+                }}
+                onPause={() => {
+                  setRemoteVideoPlaying(false);
+                  bumpVideoDebug();
+                }}
+                onLoadedData={() => bumpVideoDebug()}
               />
               <div className={styles.nameTag}>{displayRemoteName}</div>
             </div>
@@ -723,7 +891,17 @@ export default function StaringContest() {
                   <div className={styles.cardBody}>
                     Tap Ready when you&apos;re set. The game starts when both players are ready.
                   </div>
-                  <button type="button" className={styles.primaryBtn} onClick={toggleReady}>
+                  {!dataChannelReady ? (
+                    <div className={styles.cardBodyMuted}>Connecting to opponent…</div>
+                  ) : hasRemoteStream && !remoteVideoPlaying ? (
+                    <div className={styles.cardBodyMuted}>Waiting for opponent video…</div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.primaryBtn}
+                    onClick={toggleReady}
+                    disabled={!dataChannelReady || !localCameraReady}
+                  >
                     {localReady ? "Cancel Ready" : "Ready"}
                   </button>
                   <div className={styles.cardBody}>

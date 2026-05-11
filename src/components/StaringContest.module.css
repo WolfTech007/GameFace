@@ -81,6 +81,32 @@
   display: flex;
   flex-direction: column;
   min-height: 100svh;
+  position: relative;
+}
+
+.debugOverlay {
+  position: fixed;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 50;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: min(92vw, 280px);
+  pointer-events: none;
+}
+
+.cardBodyMuted {
+  margin-top: 10px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  opacity: 0.82;
+  line-height: 1.35;
 }
 
 .splitStage {
