@@ -58,6 +58,7 @@ export function initialFaceHockeyState(): FaceHockeyNetState {
 }
 
 export function cloneFaceHockeyState(s: FaceHockeyNetState): FaceHockeyNetState {
+  const r = s.ready ?? { host: false, guest: false };
   return {
     phase: s.phase,
     scoreA: s.scoreA,
@@ -75,6 +76,6 @@ export function cloneFaceHockeyState(s: FaceHockeyNetState): FaceHockeyNetState 
             ? { kind: "go" }
             : { kind: "count", n: s.overlay.n },
     winner: s.winner,
-    ready: { ...s.ready },
+    ready: { ...r },
   };
 }

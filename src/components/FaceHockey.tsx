@@ -26,7 +26,7 @@ import {
 
 const QUEUE_POLL_MS = 600;
 const WIN_SCORE = 3;
-const FH_UI_DEBUG = true;
+const FH_UI_DEBUG = process.env.NODE_ENV === "development";
 
 type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
@@ -79,6 +79,7 @@ export default function FaceHockey() {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
 
   const [uiPhase, setUiPhase] = useState<UiPhase>("menu");
   const uiPhaseRef = useRef<UiPhase>("menu");
@@ -127,6 +128,7 @@ export default function FaceHockey() {
   const scheduledTimersRef = useRef<number[]>([]);
 
   const [, bumpView] = useReducer((x: number) => x + 1, 0);
+  const [, bumpLobby] = useReducer((x: number) => x + 1, 0);
 
   const [, setUiDebugTick] = useState(0);
   useEffect(() => {
@@ -142,9 +144,9 @@ export default function FaceHockey() {
 
   function setCanvasSize() {
     const canvas = canvasRef.current;
-    const parent = canvas?.parentElement;
-    if (!canvas || !parent) return;
-    const rect = parent.getBoundingClientRect();
+    const frame = frameRef.current;
+    if (!canvas || !frame) return;
+    const rect = frame.getBoundingClientRect();
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     canvas.width = Math.floor(rect.width * dpr);
     canvas.height = Math.floor(rect.height * dpr);
@@ -166,9 +168,9 @@ export default function FaceHockey() {
       },
       video: {
         facingMode: "user",
-        width: { ideal: 720 },
-        height: { ideal: 1280 },
-        frameRate: { ideal: 60, max: 60 },
+        width: { ideal: 480, max: 640 },
+        height: { ideal: 480, max: 640 },
+        frameRate: { ideal: 24, max: 30 },
       },
     });
     localStreamRef.current = stream;
@@ -364,6 +366,15 @@ export default function FaceHockey() {
     broadcastAuthoritativeState();
   }
 
+  function hostTryStartWhenBothReady() {
+    if (roleRef.current !== "host") return;
+    const s = hostStateRef.current;
+    if (s.phase !== "lobby") return;
+    if (s.ready.host && s.ready.guest) {
+      hostBeginMatch();
+    }
+  }
+
   function hostBeginMatch() {
     const s = hostStateRef.current;
     if (!s.ready.host || !s.ready.guest) return;
@@ -371,6 +382,7 @@ export default function FaceHockey() {
     s.scoreA = 0;
     s.scoreB = 0;
     s.winner = null;
+    s.ready = { host: false, guest: false };
     resetPuckCenter(s);
     s.puckFrozen = true;
     s.overlay = { kind: "none" };
@@ -380,11 +392,13 @@ export default function FaceHockey() {
   }
 
   function toggleReady() {
+    if (!opponentConnected || uiPhaseRef.current !== "lobby") return;
     if (role === "host") {
-      const s = hostStateRef.current;
-      s.ready.host = !s.ready.host;
+      hostStateRef.current.ready.host = !hostStateRef.current.ready.host;
       broadcastAuthoritativeState();
-    } else {
+      bumpLobby();
+      hostTryStartWhenBothReady();
+    } else if (role === "guest") {
       sendToHost({ t: "fh_ready", ready: !hostStateRef.current.ready.guest });
     }
   }
@@ -403,14 +417,16 @@ export default function FaceHockey() {
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
+    const ui = uiPhaseRef.current;
+    if (ui === "menu" || ui === "matchmaking" || ui === "lobby") {
+      return;
+    }
+
     const sx = (x: number) => x * w;
     const sy = (y: number) => y * h;
 
-    const grad = ctx.createRadialGradient(sx(0.5), sy(0.5), w * 0.05, sx(0.5), sy(0.5), w * 0.65);
-    grad.addColorStop(0, "rgba(15, 85, 65, 0.95)");
-    grad.addColorStop(0.45, "rgba(8, 42, 38, 0.98)");
-    grad.addColorStop(1, "rgba(4, 18, 22, 1)");
-    ctx.fillStyle = grad;
+    /* Light tint only — keep webcam feeds readable through the overlay */
+    ctx.fillStyle = "rgba(0, 0, 0, 0.14)";
     ctx.fillRect(0, 0, w, h);
 
     const inset = FH.WALL_INSET;
@@ -541,6 +557,8 @@ export default function FaceHockey() {
       } else if (msg.t === "fh_ready") {
         hostStateRef.current.ready.guest = msg.ready;
         broadcastAuthoritativeState();
+        bumpLobby();
+        hostTryStartWhenBothReady();
       } else if (msg.t === "fh_play_again") {
         hostResetLobby();
         setUiPhase("lobby");
@@ -723,13 +741,6 @@ export default function FaceHockey() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, opponentConnected]);
 
-  const canHostStart =
-    role === "host" &&
-    opponentConnected &&
-    uiPhase === "lobby" &&
-    hostStateRef.current.ready.host &&
-    hostStateRef.current.ready.guest;
-
   const gs = hostStateRef.current;
   const showMenu = uiPhase === "menu";
   const showMm = uiPhase === "matchmaking";
@@ -748,7 +759,7 @@ export default function FaceHockey() {
 
   return (
     <main className={styles.root}>
-      <div className={styles.frame}>
+      <div ref={frameRef} className={styles.frame}>
         <div className={`${styles.half} ${styles.topHalf}`}>
           <video ref={remoteVideoRef} className={styles.videoRemote} playsInline autoPlay />
         </div>
@@ -756,13 +767,21 @@ export default function FaceHockey() {
           <video ref={localVideoRef} className={styles.videoLocal} playsInline muted autoPlay />
         </div>
 
-        {role === "guest" ? (
-          <div className={styles.canvasGuestRotate}>
-            <canvas ref={canvasRef} className={styles.canvas} />
-          </div>
-        ) : (
-          <canvas ref={canvasRef} className={styles.canvas} />
-        )}
+        <canvas
+          ref={canvasRef}
+          className={role === "guest" ? `${styles.canvas} ${styles.canvasRotate180}` : styles.canvas}
+        />
+
+        {role && opponentConnected ? (
+          <>
+            <div className={`${styles.playerTag} ${styles.playerTagTop}`} title="Opponent feed">
+              {role === "host" ? "Player B · opponent" : "Player A · opponent"}
+            </div>
+            <div className={`${styles.playerTag} ${styles.playerTagBottom}`} title="Your feed">
+              {role === "host" ? "Player A · you" : "Player B · you"}
+            </div>
+          </>
+        ) : null}
 
         <div className={styles.scoreHud}>
           <span className={styles.scoreTag}>Player A</span>
@@ -849,23 +868,30 @@ export default function FaceHockey() {
           <div className={styles.overlay}>
             <div className={styles.card}>
               <div className={styles.title}>Lobby</div>
-              <div className={styles.sub}>Tap Ready, then host starts ({WIN_SCORE} goals to win).</div>
-              <button type="button" className={styles.buttonSecondary} onClick={toggleReady}>
-                {role === "host"
-                  ? gs.ready.host
-                    ? "Ready ✓"
-                    : "Ready"
-                  : gs.ready.guest
-                    ? "Ready ✓"
-                    : "Ready"}
-              </button>
-              {role === "host" ? (
-                <button type="button" className={styles.button} onClick={hostBeginMatch} disabled={!canHostStart}>
-                  Start Game
+              <div className={styles.sub}>Ready up to start game.</div>
+              <div className={styles.subMuted}>First to {WIN_SCORE} goals wins.</div>
+              {opponentConnected ? (
+                <div className={styles.subMuted}>
+                  {role === "host"
+                    ? gs.ready.guest
+                      ? "Opponent is ready."
+                      : "Waiting for opponent to ready up…"
+                    : gs.ready.host
+                      ? "Opponent is ready."
+                      : "Waiting for opponent to ready up…"}
+                </div>
+              ) : null}
+              {opponentConnected ? (
+                <button
+                  type="button"
+                  className={
+                    (role === "host" ? gs.ready.host : gs.ready.guest) ? styles.buttonReady : styles.button
+                  }
+                  onClick={toggleReady}
+                >
+                  {(role === "host" ? gs.ready.host : gs.ready.guest) ? "READY ✓" : "READY"}
                 </button>
-              ) : (
-                <div className={styles.status}>Waiting for host…</div>
-              )}
+              ) : null}
               <div className={styles.status}>{status}</div>
             </div>
           </div>

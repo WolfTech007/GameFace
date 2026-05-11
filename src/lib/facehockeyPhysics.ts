@@ -152,13 +152,15 @@ export function hostStepPhysics(
 
 export function hostMalletFromNose(nx: number, ny: number): { x: number; y: number } {
   const x = clamp(nx, FH.X_MIN, FH.X_MAX);
-  const y = clamp(FH.A_Y_MAX - ny * (FH.A_Y_MAX - FH.A_Y_MIN), FH.A_Y_MIN, FH.A_Y_MAX);
+  /** Nose lower on screen (larger ny, +y down in world) → mallet moves toward bottom goal. */
+  const y = clamp(FH.A_Y_MIN + ny * (FH.A_Y_MAX - FH.A_Y_MIN), FH.A_Y_MIN, FH.A_Y_MAX);
   return { x, y };
 }
 
 export function guestMalletFromNoseVisual(nx: number, ny: number): { x: number; y: number } {
   const xv = clamp(1 - nx, 0, 1);
   const x = clamp(xv, FH.X_MIN, FH.X_MAX);
+  /** Same nose-down → +y toward center line for Player B’s half. */
   const y = clamp(FH.B_Y_MIN + ny * (FH.B_Y_MAX - FH.B_Y_MIN), FH.B_Y_MIN, FH.B_Y_MAX);
   return { x, y };
 }
