@@ -50,9 +50,8 @@
 }
 
 /*
- * Remote (guest / Player B viewing host): rotate + mirror — tuned so B’s view feels correct.
- * Remote (host / Player A viewing guest): rotate only — horizontal mirror removed so B’s nose
- * lines up with B’s paddle on A’s screen (visual-only; stream + physics unchanged).
+ * Remote/opponent feed (Player A and Player B): same presentation — rotate + horizontal flip.
+ * Visual-only; keeps opponent nose motion aligned with paddle on both clients’ opponent pane.
  */
 .videoRemote {
   position: absolute;
@@ -63,29 +62,6 @@
   transform: rotate(180deg) scaleX(-1);
 }
 
-.videoRemoteHost {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: rotate(180deg);
-}
-
-/*
- * Player B only: rotate the composed canvas so world-top (their paddle) sits at the
- * physical bottom of the phone — cosmetic; bitmap/canvas math is still canonical.
- */
-.canvasGuestRotate {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  transform: rotate(180deg);
-  transform-origin: center center;
-  /* Must not sit above menu overlays or it steals taps (game uses nose, not canvas). */
-  pointer-events: none;
-}
-
 .canvas {
   position: absolute;
   inset: 0;
@@ -94,6 +70,15 @@
   height: 100%;
   touch-action: none;
   pointer-events: none;
+}
+
+/*
+ * Player B only: rotate canvas for bottom-self perspective — uniform scale only (no wrapper).
+ * Bitmap sized from .frame (same as Player A) so circles stay circular.
+ */
+.canvasRotate180 {
+  transform: rotate(180deg);
+  transform-origin: center center;
 }
 
 .hud {

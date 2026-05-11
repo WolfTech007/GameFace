@@ -98,6 +98,8 @@ export default function FacePong() {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  /** Size canvas from frame rect on both roles so guest rotation never skews aspect ratio. */
+  const frameRef = useRef<HTMLDivElement | null>(null);
 
   const [uiPhase, setUiPhase] = useState<UiPhase>("menu");
   const uiPhaseRef = useRef<UiPhase>("menu");
@@ -150,9 +152,9 @@ export default function FacePong() {
 
   function setCanvasSize() {
     const canvas = canvasRef.current;
-    const parent = canvas?.parentElement;
-    if (!canvas || !parent) return;
-    const rect = parent.getBoundingClientRect();
+    const frame = frameRef.current;
+    if (!canvas || !frame) return;
+    const rect = frame.getBoundingClientRect();
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
     canvas.width = Math.floor(rect.width * dpr);
     canvas.height = Math.floor(rect.height * dpr);
@@ -684,12 +686,12 @@ export default function FacePong() {
 
   return (
     <main className={styles.root}>
-      <div className={styles.frame}>
+      <div ref={frameRef} className={styles.frame}>
         {/* Same layout for host + guest: opponent top, self bottom (presentation only). */}
         <div className={`${styles.half} ${styles.topHalf}`}>
           <video
             ref={remoteVideoRef}
-            className={role === "host" ? styles.videoRemoteHost : styles.videoRemote}
+            className={styles.videoRemote}
             playsInline
             autoPlay
           />
@@ -704,13 +706,10 @@ export default function FacePong() {
           />
         </div>
 
-        {role === "guest" ? (
-          <div className={styles.canvasGuestRotate}>
-            <canvas ref={canvasRef} className={styles.canvas} />
-          </div>
-        ) : (
-          <canvas ref={canvasRef} className={styles.canvas} />
-        )}
+        <canvas
+          ref={canvasRef}
+          className={role === "guest" ? `${styles.canvas} ${styles.canvasRotate180}` : styles.canvas}
+        />
 
         {role && opponentConnected ? (
           <>
@@ -740,7 +739,7 @@ export default function FacePong() {
               {role === "host"
                 ? "A: canonical canvas, local bottom"
                 : role === "guest"
-                  ? "B: canvas CSS rotate(180° only; paddle send = 1−visualX)"
+                  ? "B: canvas rotate(180°); paddle send = 1−visualX"
                   : "—"}
             </div>
             <div>
