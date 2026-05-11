@@ -6,4 +6,4 @@ export { GFGameCard } from "./GFGameCard";
 export { GameIntro } from "./GameIntro";
 export { GamePlayEntrance } from "./GamePlayEntrance";
 export { GameplayDuelHud } from "./gameplay/GameplayDuelHud";
-export type { GameplayDuelHudProps, GameplayDuelHudSide } from "./gameplay/GameplayDuelHud";
+export type { DuelHudIdentity, GameplayDuelHudProps } from "./gameplay/GameplayDuelHud";

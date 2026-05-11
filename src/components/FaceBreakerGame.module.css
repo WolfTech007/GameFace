@@ -144,6 +144,20 @@
   transform: translateY(1px);
 }
 
+.homeButton {
+  margin-top: 10px;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: transparent;
+  color: rgba(226, 232, 240, 0.95);
+  font-size: 12px;
+  font-weight: 780;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
 .finePrint {
   margin-top: 12px;
   font-size: 12px;

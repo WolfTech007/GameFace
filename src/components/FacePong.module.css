@@ -127,33 +127,6 @@
   word-break: break-all;
 }
 
-/* Player A/B labels — rendered after canvas; z-index above paddles (z-index 3). */
-.debugPlayerTag {
-  position: absolute;
-  left: 8px;
-  z-index: 25;
-  padding: 5px 9px;
-  border-radius: 8px;
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: rgba(0, 0, 0, 0.78);
-  border: 1px solid rgba(140, 200, 255, 0.6);
-  color: #dbeafe;
-  pointer-events: none;
-  max-width: calc(100% - 16px);
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
-}
-
-.debugPlayerTagTop {
-  top: 8px;
-}
-
-.debugPlayerTagBottom {
-  bottom: 8px;
-}
-
 .debugWorld {
   position: absolute;
   left: 6px;

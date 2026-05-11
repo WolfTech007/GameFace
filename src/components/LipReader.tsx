@@ -25,9 +25,12 @@ import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
+/** Landing page (rules + Find Match) when returning from `/charades/play`. */
+const DEFAULT_CHARADES_INTRO_HREF = "/charades";
 /** Set true locally to verify round/guess sync; keep false in production. */
 const LIP_READER_UI_DEBUG = false;
 
@@ -297,6 +300,7 @@ export default function LipReader({
 
   function hostTryStartFromLobby() {
     const s = gameStateRef.current;
+    if (s.phase !== "lobby") return;
     if (!s.readyLobbyHost || !s.readyLobbyGuest) return;
     s.readyLobbyHost = false;
     s.readyLobbyGuest = false;
@@ -342,6 +346,7 @@ export default function LipReader({
       gameStateRef.current.readyLobbyHost = !gameStateRef.current.readyLobbyHost;
       gameStateRef.current.hostName = nameRef.current.slice(0, 24);
       broadcastToGuest();
+      queueMicrotask(() => hostTryStartFromLobby());
     } else {
       sendToHost({ t: "lr_ready_lobby", ready: !gameStateRef.current.readyLobbyGuest });
     }
@@ -370,18 +375,11 @@ export default function LipReader({
 
   function leaveMatch() {
     cleanup();
-    setOpponentConnected(false);
-    setOpponentLeftMatch(false);
-    setUiMenu(true);
-    setMatchmaking(false);
-    setRole(null);
-    setRoomId(null);
-    setStatus("");
+    router.push(introHref ?? DEFAULT_CHARADES_INTRO_HREF);
   }
 
   function returnToArcade() {
     leaveMatch();
-    if (introHref) router.push(introHref);
   }
 
   function submitGuess() {
@@ -450,6 +448,7 @@ export default function LipReader({
       } else if (msg.t === "lr_ready_lobby") {
         s.readyLobbyGuest = msg.ready;
         broadcastToGuest();
+        queueMicrotask(() => hostTryStartFromLobby());
       } else if (msg.t === "lr_ready_next") {
         s.readyNextGuest = msg.ready;
         broadcastToGuest();
@@ -601,11 +600,7 @@ export default function LipReader({
     void leaveQueue();
     setMatchmaking(false);
     setStatus("");
-    if (introHref) {
-      router.push(introHref);
-      return;
-    }
-    setUiMenu(true);
+    router.push(introHref ?? DEFAULT_CHARADES_INTRO_HREF);
   }
 
   const gs = gameStateRef.current;
@@ -614,7 +609,7 @@ export default function LipReader({
   const iAmGuesser = role != null && !iAmCommunicator;
 
   const opponentName =
-    role === "host" ? gs.guestName || "Opponent" : role === "guest" ? gs.hostName || "Opponent" : "Opponent";
+    role === "host" ? gs.guestName || "" : role === "guest" ? gs.hostName || "" : "";
   const myDisplayName =
     role === "host"
       ? gs.hostName || nameRef.current || "You"
@@ -655,9 +650,6 @@ export default function LipReader({
     gs.phase === "playing" &&
     (role === "host" || (role === "guest" && gs.secretWord.length > 0));
 
-  const canHostStart =
-    role === "host" && opponentConnected && gs.phase === "lobby" && gs.readyLobbyHost && gs.readyLobbyGuest;
-
   const lobbyReadyLabel =
     role === "host"
       ? gs.readyLobbyHost
@@ -693,6 +685,15 @@ export default function LipReader({
 
   const showDuelHud = !uiMenu;
 
+  const opponentHudDisplay =
+    matchmaking && !opponentConnected
+      ? "Finding match"
+      : opponentName.trim()
+        ? opponentName.trim()
+        : "Connecting";
+  const opponentHudUsername =
+    matchmaking && !opponentConnected ? "" : hudUsernameForRemote(opponentHudDisplay);
+
   return (
     <main className={gp.surfaceRoot}>
       <div className={gp.surfaceVignette} aria-hidden />
@@ -700,21 +701,14 @@ export default function LipReader({
         <GameplayDuelHud
           gameBadge="Charades"
           opponent={{
-            variant: "opponent",
-            displayName: matchmaking && !opponentConnected ? "Finding player…" : opponentName,
+            displayName: opponentHudDisplay,
+            username: opponentHudUsername,
             online: opponentConnected || matchmaking,
-            stat: undefined,
           }}
           you={{
-            variant: "you",
-            displayName: profile.displayName.trim() || "You",
-            handle: `@${profile.username}`,
-            level: profile.level,
+            displayName: profile.displayName.trim() || "Guest",
+            username: hudPlainUsername(profile.username),
             online: true,
-            stat:
-              opponentConnected && gs.phase === "playing"
-                ? `${gs.guessesRemaining} guesses`
-                : undefined,
           }}
         />
       ) : null}
@@ -744,13 +738,13 @@ export default function LipReader({
             ) : null}
             <div className={`${gp.surfacePane} ${gp.surfacePaneYou}`}>
               <video ref={localVideoRef} className={`${gp.surfaceFeed} ${gp.surfaceFeedMirror}`} playsInline muted autoPlay />
-              {showWordToMe ? (
-                <div className={gp.wordCard}>
-                  <div className={gp.wordCardLabel}>Your word</div>
-                  <div className={gp.wordCardText}>{gs.secretWord}</div>
-                </div>
-              ) : null}
             </div>
+            {showWordToMe ? (
+              <div className={gp.wordCard}>
+                <div className={gp.wordCardLabel}>Your word</div>
+                <div className={gp.wordCardText}>{gs.secretWord}</div>
+              </div>
+            ) : null}
           </div>
 
           {!uiMenu && !matchmaking && opponentConnected && gs.phase === "playing" ? (
@@ -782,6 +776,7 @@ export default function LipReader({
                 onLeave={leaveMatch}
                 opponentLeft={opponentLeftMatch}
                 onReturnArcade={returnToArcade}
+                onGoHome={() => router.push("/")}
               />
             </div>
           ) : null}
@@ -793,13 +788,7 @@ export default function LipReader({
                   <button type="button" className={gp.surfacePillGhost} onClick={toggleLobbyReady}>
                     {lobbyReadyLabel}
                   </button>
-                  {role === "host" ? (
-                    <button type="button" className={gp.surfacePill} onClick={hostTryStartFromLobby} disabled={!canHostStart}>
-                      Start round
-                    </button>
-                  ) : (
-                    <span className={gp.dockCaption}>Wait for host…</span>
-                  )}
+                  <span className={gp.dockCaption}>Round begins when both players are ready.</span>
                 </>
               ) : null}
               {gs.phase === "round_result" ? (

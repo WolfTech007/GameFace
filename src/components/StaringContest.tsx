@@ -23,6 +23,7 @@ import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/r
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 type Phase =
@@ -43,6 +44,9 @@ const QUEUE_POLL_MS = 600;
 
 const VIDEO_DEBUG =
   typeof process !== "undefined" && process.env.NODE_ENV === "development";
+
+/** Landing page (rules + Find Match) when returning from `/staring-contest/play`. */
+const DEFAULT_STARING_INTRO_HREF = "/staring-contest";
 
 export type StaringContestProps = {
   autoJoinPublicQueue?: boolean;
@@ -375,9 +379,7 @@ export default function StaringContest({
       pollTimerRef.current = null;
     }
     await leaveQueue();
-    setStatus("");
-    setPhase("intro");
-    if (introHref) router.push(introHref);
+    router.push(introHref ?? DEFAULT_STARING_INTRO_HREF);
   }
 
   async function applyMatch(roomId: string, r: Role, opp: string) {
@@ -493,33 +495,11 @@ export default function StaringContest({
   function leaveMatch() {
     void leaveQueue();
     cleanupPeer();
-    setPhase("intro");
-    setStatus("");
-    setOpponentName(null);
-    setPeerRoomId(null);
-    setRole(null);
-    hostRoleRef.current = null;
-    setLocalReady(false);
-    setRemoteReady(false);
-    setCountdownN(null);
-    setEndedWinner(null);
-    setRoundSeconds(0);
-    gameEndedRef.current = false;
-    earThresholdRef.current = 0.22;
-    earCalibRef.current = [];
-    blinkSmootherRef.current.reset();
-    blinkBlendSmootherRef.current.reset();
-    faceMissingSinceRef.current = null;
-    gameStartWallMsRef.current = null;
-    rematchIntentRef.current = emptyRematchIntent();
-    setGuestRematch(emptyRematchIntent());
-    bumpRematchUi();
-    setOpponentLeftMatch(false);
+    router.push(introHref ?? DEFAULT_STARING_INTRO_HREF);
   }
 
   function returnToArcade() {
     leaveMatch();
-    if (introHref) router.push(introHref);
   }
 
   function wireData(conn: any, isHost: boolean) {
@@ -797,8 +777,8 @@ export default function StaringContest({
     sendNet({ t: "ready", ready: next });
   }
 
-  const displayLocalName = profile.displayName.trim() || "You";
-  const displayRemoteName = opponentName || "Opponent";
+  const displayLocalName = profile.displayName.trim() || "Guest";
+  const displayRemoteName = opponentName?.trim() || "Connecting";
 
   const showGameChrome =
     phase === "peer_setup" ||
@@ -854,16 +834,13 @@ export default function StaringContest({
           <GameplayDuelHud
             gameBadge="Stare"
             opponent={{
-              variant: "opponent",
               displayName: displayRemoteName,
+              username: hudUsernameForRemote(displayRemoteName),
               online: true,
-              stat: phase === "playing" ? "Live" : undefined,
             }}
             you={{
-              variant: "you",
               displayName: displayLocalName,
-              handle: `@${profile.username}`,
-              level: profile.level,
+              username: hudPlainUsername(profile.username),
               online: true,
             }}
           />
@@ -894,9 +871,7 @@ export default function StaringContest({
                   </div>
                 ) : null}
 
-                <div
-                  className={`${gp.surfacePane} ${gp.surfacePaneOpponent} ${phase === "ended" && endedWinner ? gp.dimPane : ""}`}
-                >
+                <div className={`${gp.surfacePane} ${gp.surfacePaneOpponent}`}>
                   <video
                     ref={remoteVideoRef}
                     className={`${gp.surfaceFeed} ${styles.video} ${styles.videoRemote}`}
@@ -922,9 +897,7 @@ export default function StaringContest({
                   </div>
                 ) : null}
 
-                <div
-                  className={`${gp.surfacePane} ${gp.surfacePaneYou} ${phase === "ended" && !endedWinner ? gp.dimPane : ""}`}
-                >
+                <div className={`${gp.surfacePane} ${gp.surfacePaneYou}`}>
                   <video
                     ref={localVideoRef}
                     className={`${gp.surfaceFeed} ${gp.surfaceFeedMirror} ${styles.video} ${styles.videoLocal}`}
@@ -943,7 +916,7 @@ export default function StaringContest({
                         <div className={gp.resultKicker}>Lobby</div>
                         <div className={gp.resultTitle}>Opponent found</div>
                         <div className={gp.resultDetail}>
-                          Tap ready when your camera is set. Both players must ready up.
+                          Tap ready when your camera is set. The round starts automatically when both players are ready.
                         </div>
                         {!dataChannelReady ? (
                           <div className={gp.resultDetail}>Connecting…</div>
@@ -965,40 +938,40 @@ export default function StaringContest({
                       </div>
                     </div>
                   ) : null}
-
-                  {phase === "ended" ? (
-                    <div className={gp.floatingGlass}>
-                      <div className={gp.glassPanel}>
-                        {!endedWinner ? (
-                          <>
-                            <div className={gp.stinger} style={{ fontSize: "clamp(26px, 9vw, 44px)" }}>
-                              Blink detected
-                            </div>
-                            <div className={gp.stingerSub}>You blinked first — round over.</div>
-                          </>
-                        ) : (
-                          <>
-                            <div className={gp.resultKicker}>Victory</div>
-                            <div className={gp.resultTitle}>You held longer</div>
-                          </>
-                        )}
-                        <div className={gp.resultDetail}>
-                          Winner · {endedWinner ? displayLocalName : displayRemoteName}
-                        </div>
-                        <div className={gp.resultDetail}>Time · {roundSeconds.toFixed(2)}s</div>
-                        <RematchBar
-                          iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
-                          theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
-                          onRematch={requestRematch}
-                          onLeave={leaveMatch}
-                          opponentLeft={opponentLeftMatch}
-                          onReturnArcade={returnToArcade}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               </div>
+              {phase === "ended" ? (
+                <div className={gp.floatingGlass}>
+                  <div className={gp.glassPanel}>
+                    {!endedWinner ? (
+                      <>
+                        <div className={gp.stinger} style={{ fontSize: "clamp(26px, 9vw, 44px)" }}>
+                          Blink detected
+                        </div>
+                        <div className={gp.stingerSub}>You blinked first — round over.</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className={gp.resultKicker}>Victory</div>
+                        <div className={gp.resultTitle}>You held longer</div>
+                      </>
+                    )}
+                    <div className={gp.resultDetail}>
+                      Winner · {endedWinner ? displayLocalName : displayRemoteName}
+                    </div>
+                    <div className={gp.resultDetail}>Time · {roundSeconds.toFixed(2)}s</div>
+                    <RematchBar
+                      iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
+                      theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
+                      onRematch={requestRematch}
+                      onLeave={leaveMatch}
+                      opponentLeft={opponentLeftMatch}
+                      onReturnArcade={returnToArcade}
+                      onGoHome={() => router.push("/")}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

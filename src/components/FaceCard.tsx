@@ -21,6 +21,7 @@ import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/r
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 type Phase = "intro" | "queue" | "peer_setup" | "lobby" | "playing" | "ended";
@@ -28,6 +29,9 @@ type Phase = "intro" | "queue" | "peer_setup" | "lobby" | "playing" | "ended";
 type Role = "host" | "guest";
 
 const QUEUE_POLL_MS = 600;
+
+/** Landing page (rules + Find Match) when returning from `/facecard/play`. */
+const DEFAULT_FACECARD_INTRO_HREF = "/facecard";
 
 /** Exponential smoothing so note cards stick to the forehead like a lightweight AR filter. */
 function smoothForehead(
@@ -145,6 +149,8 @@ export default function FaceCard({
   const overlaySmoothRemoteRef = useRef({ nx: 0.5, ny: 0.28 });
 
   const gameEndedRef = useRef(false);
+  /** Prevents duplicate fc_begin if auto-start runs twice in one tick. */
+  const startingFromLobbyRef = useRef(false);
 
   const [endPayload, setEndPayload] = useState<EndPayload | null>(null);
 
@@ -389,33 +395,11 @@ export default function FaceCard({
   function leaveMatch() {
     void leaveQueue();
     cleanupPeer();
-    setPhase("intro");
-    setStatus("");
-    setOpponentName(null);
-    setRole(null);
-    setLocalReady(false);
-    setRemoteReady(false);
-    setGuessModalOpen(false);
-    setGuessInput("");
-    setToast(null);
-    syncPhysicalGuesses(3, 3);
-    myGuessAttemptsRef.current = 0;
-    setTimerSec(0);
-    setEndPayload(null);
-    gameEndedRef.current = false;
-    hostSecretRef.current = null;
-    guestSecretRef.current = null;
-    remoteCardLabelRef.current = "";
-    startWallMsRef.current = null;
-    rematchIntentRef.current = emptyRematchIntent();
-    setGuestRematch(emptyRematchIntent());
-    bumpRematchUi();
-    setOpponentLeftMatch(false);
+    router.push(introHref ?? DEFAULT_FACECARD_INTRO_HREF);
   }
 
   function returnToArcade() {
     leaveMatch();
-    if (introHref) router.push(introHref);
   }
 
   function wireHost(conn: any) {
@@ -641,9 +625,7 @@ export default function FaceCard({
       pollTimerRef.current = null;
     }
     await leaveQueue();
-    setStatus("");
-    setPhase("intro");
-    if (introHref) router.push(introHref);
+    router.push(introHref ?? DEFAULT_FACECARD_INTRO_HREF);
   }
 
   function toggleReady() {
@@ -654,24 +636,40 @@ export default function FaceCard({
 
   function hostStartGame() {
     if (role !== "host" || !localReady || !remoteReady || gameEndedRef.current) return;
-    const [hostCard, guestCard] = pickTwoDistinctRandom(POP_CULTURE_DECK);
-    hostSecretRef.current = hostCard;
-    guestSecretRef.current = guestCard;
+    if (phaseRef.current !== "lobby") return;
+    if (startingFromLobbyRef.current) return;
+    startingFromLobbyRef.current = true;
+    try {
+      const [hostCard, guestCard] = pickTwoDistinctRandom(POP_CULTURE_DECK);
+      hostSecretRef.current = hostCard;
+      guestSecretRef.current = guestCard;
 
-    const startWallMs = Date.now() + 500;
-    startWallMsRef.current = startWallMs;
-    syncPhysicalGuesses(3, 3);
-    myGuessAttemptsRef.current = 0;
-    gameEndedRef.current = false;
+      const startWallMs = Date.now() + 500;
+      startWallMsRef.current = startWallMs;
+      syncPhysicalGuesses(3, 3);
+      myGuessAttemptsRef.current = 0;
+      gameEndedRef.current = false;
 
-    sendNet({
-      t: "fc_begin",
-      startWallMs,
-      remoteCardLabel: hostCard,
-    });
+      sendNet({
+        t: "fc_begin",
+        startWallMs,
+        remoteCardLabel: hostCard,
+      });
 
-    setPhase("playing");
+      setPhase("playing");
+    } finally {
+      queueMicrotask(() => {
+        startingFromLobbyRef.current = false;
+      });
+    }
   }
+
+  useEffect(() => {
+    if (phase !== "lobby" || role !== "host") return;
+    if (!localReady || !remoteReady) return;
+    queueMicrotask(() => hostStartGame());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hostStartGame ties host lobby → playing once both ready
+  }, [phase, role, localReady, remoteReady]);
 
   function submitGuess() {
     const text = guessInput.trim();
@@ -816,8 +814,8 @@ export default function FaceCard({
     };
   }, []);
 
-  const displayLocalName = profile.displayName.trim() || "You";
-  const displayRemoteName = opponentName || "Opponent";
+  const displayLocalName = profile.displayName.trim() || "Guest";
+  const displayRemoteName = opponentName?.trim() || "Connecting";
 
   /** Intro with Find Match — only when not entering from GameIntro (?queue=1). */
   const showLegacyIntro = (phase === "intro" || phase === "queue") && !autoJoinPublicQueue;
@@ -826,8 +824,6 @@ export default function FaceCard({
     phase === "lobby" ||
     phase === "playing" ||
     phase === "ended";
-
-  const canHostStart = role === "host" && phase === "lobby" && localReady && remoteReady;
 
   const isHostPlayer = role === "host";
   const myLeft = isHostPlayer ? hostGuessCount : guestGuessCount;
@@ -882,17 +878,13 @@ export default function FaceCard({
           <GameplayDuelHud
             gameBadge="Face Card"
             opponent={{
-              variant: "opponent",
               displayName: displayRemoteName,
+              username: hudUsernameForRemote(displayRemoteName),
               online: true,
-              stat: phase === "playing" ? `${theirLeft} guesses` : undefined,
             }}
             you={{
-              variant: "you",
               displayName: displayLocalName,
-              handle: `@${profile.username}`,
-              level: profile.level,
-              stat: phase === "playing" ? `${myLeft} guesses` : undefined,
+              username: hudPlainUsername(profile.username),
               online: true,
             }}
           />
@@ -929,12 +921,6 @@ export default function FaceCard({
               />
               <canvas ref={localOverlayRef} className={styles.overlayCanvas} aria-hidden />
 
-              {phase === "playing" ? (
-                <div className={gp.turnRibbon}>
-                  {myLeft > 0 ? "Your turn · ask questions or guess" : "Their turn · listen in"}
-                </div>
-              ) : null}
-
               {outOfGuesses ? <div className={gp.riskRibbon}>Out of guesses</div> : null}
 
               {toast ? <div className={styles.toast}>{toast}</div> : null}
@@ -951,21 +937,9 @@ export default function FaceCard({
                     <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
                       Them: {remoteReady ? "Ready ✓" : "Waiting"}
                     </div>
-                    {role === "host" ? (
-                      <button
-                        type="button"
-                        className={gp.surfacePillGhost}
-                        style={{ marginTop: "12px", width: "100%" }}
-                        onClick={hostStartGame}
-                        disabled={!canHostStart}
-                      >
-                        Start game
-                      </button>
-                    ) : (
-                      <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
-                        {localReady && remoteReady ? "Waiting for host…" : "Both players ready up."}
-                      </div>
-                    )}
+                    <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
+                      When both players are ready, the game starts automatically.
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -996,49 +970,49 @@ export default function FaceCard({
                   </div>
                 </div>
               ) : null}
-
-              {phase === "ended" && endPayload ? (
-                <div className={gp.floatingGlass}>
-                  <div className={gp.glassPanel}>
-                    {endPayload.kind === "won" ? (
-                      <>
-                        <div className={gp.resultKicker}>Victory</div>
-                        <div className={gp.resultTitle}>You cracked it</div>
-                        <div className={gp.resultDetail}>You were {endPayload.youWere}</div>
-                        <div className={gp.resultDetail}>
-                          {endPayload.durationSec.toFixed(2)}s · {endPayload.guessesUsed}/3 guesses
-                        </div>
-                      </>
-                    ) : endPayload.kind === "lost" ? (
-                      <>
-                        <div className={gp.resultKicker}>They got it</div>
-                        <div className={gp.resultTitle}>Too slow</div>
-                        <div className={gp.resultDetail}>You were {endPayload.youWere}</div>
-                      </>
-                    ) : (
-                      <>
-                        <div className={gp.resultTitle}>Draw</div>
-                        <div className={gp.resultDetail}>
-                          {endPayload.hostCard} · {endPayload.guestCard}
-                        </div>
-                        <div className={gp.resultDetail}>{endPayload.durationSec.toFixed(2)}s</div>
-                      </>
-                    )}
-                    <RematchBar
-                      iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
-                      theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
-                      onRematch={requestRematch}
-                      onLeave={leaveMatch}
-                      opponentLeft={opponentLeftMatch}
-                      onReturnArcade={returnToArcade}
-                    />
-                  </div>
-                </div>
-              ) : null}
             </div>
           </div>
+          {phase === "ended" && endPayload ? (
+            <div className={gp.floatingGlass}>
+              <div className={gp.glassPanel}>
+                {endPayload.kind === "won" ? (
+                  <>
+                    <div className={gp.resultKicker}>Victory</div>
+                    <div className={gp.resultTitle}>You cracked it</div>
+                    <div className={gp.resultDetail}>You were {endPayload.youWere}</div>
+                    <div className={gp.resultDetail}>
+                      {endPayload.durationSec.toFixed(2)}s · {endPayload.guessesUsed}/3 guesses
+                    </div>
+                  </>
+                ) : endPayload.kind === "lost" ? (
+                  <>
+                    <div className={gp.resultKicker}>They got it</div>
+                    <div className={gp.resultTitle}>Too slow</div>
+                    <div className={gp.resultDetail}>You were {endPayload.youWere}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className={gp.resultTitle}>Draw</div>
+                    <div className={gp.resultDetail}>
+                      {endPayload.hostCard} · {endPayload.guestCard}
+                    </div>
+                    <div className={gp.resultDetail}>{endPayload.durationSec.toFixed(2)}s</div>
+                  </>
+                )}
+                <RematchBar
+                  iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
+                  theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
+                  onRematch={requestRematch}
+                  onLeave={leaveMatch}
+                  opponentLeft={opponentLeftMatch}
+                  onReturnArcade={returnToArcade}
+                  onGoHome={() => router.push("/")}
+                />
+              </div>
+            </div>
+          ) : null}
           </div>
-          </div>
+        </div>
         </div>
       ) : null}
     </div>

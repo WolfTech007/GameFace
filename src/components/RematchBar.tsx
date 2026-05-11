@@ -10,6 +10,8 @@ export type RematchBarProps = {
   onLeave: () => void;
   opponentLeft?: boolean;
   onReturnArcade?: () => void;
+  /** Navigate to app home (`/`). */
+  onGoHome?: () => void;
 };
 
 export function RematchBar({
@@ -19,6 +21,7 @@ export function RematchBar({
   onLeave,
   opponentLeft,
   onReturnArcade,
+  onGoHome,
 }: RematchBarProps) {
   if (opponentLeft) {
     return (
@@ -27,6 +30,11 @@ export function RematchBar({
         <button type="button" className={styles.primary} onClick={onReturnArcade ?? onLeave}>
           Back to arcade
         </button>
+        {onGoHome ? (
+          <button type="button" className={styles.goHome} onClick={onGoHome}>
+            GO HOME
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -42,6 +50,11 @@ export function RematchBar({
       <button type="button" className={styles.secondary} onClick={onLeave}>
         Leave Match
       </button>
+      {onGoHome ? (
+        <button type="button" className={styles.goHome} onClick={onGoHome}>
+          GO HOME
+        </button>
+      ) : null}
     </div>
   );
 }

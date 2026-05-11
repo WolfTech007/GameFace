@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
 import styles from "./FaceBreakerGame.module.css";
 
@@ -183,6 +184,7 @@ function initialState(canvasW: number, canvasH: number): GameState {
 }
 
 export default function FaceBreakerGame() {
+  const router = useRouter();
   const frameRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -717,6 +719,10 @@ export default function FaceBreakerGame() {
                   Play Again
                 </button>
               )}
+
+              <button type="button" className={styles.homeButton} onClick={() => router.push("/")}>
+                GO HOME
+              </button>
 
               <div className={styles.finePrint}>
                 Tip: If the paddle feels jittery, keep your phone steady and face well-lit.

@@ -19,9 +19,13 @@ import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
+
+/** Landing page (rules + Find Match) when returning from `/facepong/play`. */
+const DEFAULT_FACEPONG_INTRO_HREF = "/facepong";
 
 /** Dev-only sync/presentation diagnostics (blue panel). Off in production builds. */
 const FP_UI_DEBUG = process.env.NODE_ENV === "development";
@@ -721,22 +725,12 @@ export default function FacePong({
       matchPollRef.current = null;
     }
     void leaveQueue();
-    if (introHref) {
-      router.push(introHref);
-      return;
-    }
-    setUiPhase("menu");
-    setStatus("Idle");
+    router.push(introHref ?? DEFAULT_FACEPONG_INTRO_HREF);
   }
 
   function leaveMatch() {
     cleanup();
-    setUiPhase("menu");
-    setRole(null);
-    setRoomId(null);
-    setOpponentConnected(false);
-    setOpponentLeftMatch(false);
-    setStatus("Idle");
+    router.push(introHref ?? DEFAULT_FACEPONG_INTRO_HREF);
   }
 
   function requestRematch() {
@@ -753,7 +747,6 @@ export default function FacePong({
 
   function returnToArcade() {
     leaveMatch();
-    if (introHref) router.push(introHref);
   }
 
   useEffect(() => {
@@ -817,16 +810,13 @@ export default function FacePong({
       <GameplayDuelHud
         gameBadge="FacePong"
         opponent={{
-          variant: "opponent",
-          displayName: opponentConnected ? "Opponent" : showMatchmaking ? "Matchmaking…" : "Arena",
+          displayName: showMatchmaking ? "Finding match" : opponentConnected ? "Rival" : "Arena",
+          username: showMatchmaking ? "" : opponentConnected ? "rival" : "",
           online: opponentConnected || showMatchmaking,
-          stat: opponentConnected && uiPhase === "playing" ? `Rally ${rallyScore}` : undefined,
         }}
         you={{
-          variant: "you",
-          displayName: profile.displayName.trim() || "You",
-          handle: `@${profile.username}`,
-          level: profile.level,
+          displayName: profile.displayName.trim() || "Guest",
+          username: hudPlainUsername(profile.username),
           online: true,
         }}
       />
@@ -868,22 +858,8 @@ export default function FacePong({
           className={role === "guest" ? `${styles.canvas} ${styles.canvasRotate180}` : styles.canvas}
         />
 
-        {role && opponentConnected ? (
-          <>
-            <div className={`${styles.debugPlayerTag} ${styles.debugPlayerTagTop}`} title="World top paddle / opponent feed">
-              {role === "host" ? "Player B · opponent" : "Player A · opponent"}
-            </div>
-            <div className={`${styles.debugPlayerTag} ${styles.debugPlayerTagBottom}`} title="World bottom paddle / your feed">
-              {role === "host" ? "Player A · you" : "Player B · you"}
-            </div>
-          </>
-        ) : null}
-
         <div className={styles.hud}>
           <div className={styles.pill}>Rally: {rallyScore}</div>
-          <div className={styles.pill}>
-            FacePong {opponentConnected ? "• 2P" : "• 1P"}
-          </div>
         </div>
 
         {FP_UI_DEBUG ? (
@@ -972,7 +948,7 @@ export default function FacePong({
           <div className={styles.overlay}>
             <div className={styles.card}>
               <div className={styles.title}>FacePong Lobby</div>
-              <div className={styles.sub}>Ready up to start game.</div>
+              <div className={styles.sub}>Ready up — the match starts when both players are ready.</div>
               <div className={styles.subMuted}>
                 {opponentConnected
                   ? role === "host"
@@ -1006,13 +982,10 @@ export default function FacePong({
               <div className={styles.row2}>
                 <button
                   className={`${styles.button} ${styles.buttonSecondary}`}
+                  type="button"
                   onClick={() => {
                     cleanup();
-                    setUiPhase("menu");
-                    setRole(null);
-                    setRoomId(null);
-                    setOpponentConnected(false);
-                    setStatus("Idle");
+                    router.push(introHref ?? DEFAULT_FACEPONG_INTRO_HREF);
                   }}
                 >
                   Back
@@ -1048,6 +1021,7 @@ export default function FacePong({
                 onLeave={leaveMatch}
                 opponentLeft={opponentLeftMatch}
                 onReturnArcade={returnToArcade}
+                onGoHome={() => router.push("/")}
               />
             </div>
           </div>

@@ -292,60 +292,44 @@
   pointer-events: none;
 }
 
+/* Charades: anchored on the seam between feeds — stays off the face cam */
 .wordCard {
   position: absolute;
-  left: 50%;
-  bottom: 18%;
-  transform: translateX(-50%);
-  z-index: 12;
-  width: min(92%, 340px);
-  padding: 18px 16px 20px;
-  border-radius: 20px;
-  text-align: center;
-  background: linear-gradient(165deg, rgba(15, 23, 42, 0.92), rgba(8, 12, 28, 0.88));
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  left: max(10px, env(safe-area-inset-left, 0px));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 11;
+  width: min(44%, 220px);
+  max-width: calc(100% - 20px);
+  padding: 10px 12px 11px;
+  border-radius: 14px;
+  text-align: left;
+  background: linear-gradient(165deg, rgba(15, 23, 42, 0.94), rgba(8, 12, 28, 0.9));
+  border: 1px solid rgba(245, 158, 11, 0.38);
   box-shadow:
-    0 0 60px rgba(245, 158, 11, 0.15),
-    0 24px 64px rgba(0, 0, 0, 0.55);
+    0 0 40px rgba(245, 158, 11, 0.12),
+    0 16px 48px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  pointer-events: none;
 }
 
 .wordCardLabel {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 850;
-  letter-spacing: 0.22em;
-  color: rgba(253, 230, 138, 0.85);
+  letter-spacing: 0.18em;
+  color: rgba(253, 230, 138, 0.88);
 }
 
 .wordCardText {
-  margin-top: 10px;
-  font-size: clamp(22px, 7vw, 34px);
+  margin-top: 6px;
+  font-size: clamp(15px, 4.2vw, 22px);
   font-weight: 950;
   letter-spacing: -0.02em;
-  line-height: 1.08;
+  line-height: 1.12;
   color: #fff;
   text-transform: uppercase;
-}
-
-.turnRibbon {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 14;
-  padding: 8px 18px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.95);
-  background: rgba(8, 12, 28, 0.65);
-  border: 1px solid rgba(167, 139, 250, 0.35);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  pointer-events: none;
+  word-break: break-word;
 }
 
 .riskRibbon {
@@ -376,11 +360,6 @@
   z-index: 18;
   width: min(92%, 380px);
   pointer-events: auto;
-}
-
-.dimPane {
-  opacity: 0.42;
-  transition: opacity var(--gf-duration-med) var(--gf-ease-out);
 }
 
 .stinger {
