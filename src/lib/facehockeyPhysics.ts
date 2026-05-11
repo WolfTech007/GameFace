@@ -28,6 +28,9 @@ export const FH = {
   RESTITUTION_MALLET: 1.06,
 };
 
+/** Empirical correction: MediaPipe nose landmark can skew slightly above the tip on some faces. */
+const NOSE_TIP_Y_OFFSET = 0.08;
+
 function length(x: number, y: number) {
   return Math.hypot(x, y);
 }
@@ -153,7 +156,8 @@ export function hostStepPhysics(
 export function hostMalletFromNose(nx: number, ny: number): { x: number; y: number } {
   const x = clamp(nx, FH.X_MIN, FH.X_MAX);
   /** Nose lower on screen (larger ny, +y down in world) → mallet moves toward bottom goal. */
-  const y = clamp(FH.A_Y_MIN + ny * (FH.A_Y_MAX - FH.A_Y_MIN), FH.A_Y_MIN, FH.A_Y_MAX);
+  const nyTip = clamp(ny + NOSE_TIP_Y_OFFSET, 0, 1);
+  const y = clamp(FH.A_Y_MIN + nyTip * (FH.A_Y_MAX - FH.A_Y_MIN), FH.A_Y_MIN, FH.A_Y_MAX);
   return { x, y };
 }
 
@@ -164,6 +168,7 @@ export function guestMalletFromNoseVisual(nx: number, ny: number): { x: number; 
    * Align with Player A: nose lower in selfie (larger ny) → canonical +y (mallet toward center).
    * Player B’s overlay is CSS-rotated 180°; invert ny vs the naive linear map so vertical tracks nose.
    */
-  const y = clamp(FH.B_Y_MAX - ny * (FH.B_Y_MAX - FH.B_Y_MIN), FH.B_Y_MIN, FH.B_Y_MAX);
+  const nyTip = clamp(ny + NOSE_TIP_Y_OFFSET, 0, 1);
+  const y = clamp(FH.B_Y_MAX - nyTip * (FH.B_Y_MAX - FH.B_Y_MIN), FH.B_Y_MIN, FH.B_Y_MAX);
   return { x, y };
 }

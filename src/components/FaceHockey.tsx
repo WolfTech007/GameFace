@@ -457,26 +457,32 @@ export default function FaceHockey() {
     ctx.lineTo(sx(0.5 + gh), sy(1 - inset));
     ctx.stroke();
 
-    const drawMallet = (mx: number, my: number, col: string) => {
-      const r = FH.MALLET_R * w;
+    const drawDisc = (mx: number, my: number, r01: number, col: string) => {
+      /**
+       * World hitboxes are circles in normalized space.
+       * Canvas is 2:1 (h != w) so draw an ellipse (rx/ry) to match the physics circle exactly.
+       */
+      const rx = r01 * w;
+      const ry = r01 * h;
       ctx.beginPath();
       ctx.fillStyle = col;
-      ctx.arc(sx(mx), sy(my), r, 0, Math.PI * 2);
+      ctx.ellipse(sx(mx), sy(my), rx, ry, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,0.35)";
       ctx.lineWidth = Math.max(1, w * 0.004);
       ctx.stroke();
     };
 
-    drawMallet(state.malletB.x, state.malletB.y, "rgba(160, 235, 255, 0.92)");
-    drawMallet(state.malletA.x, state.malletA.y, "rgba(255, 255, 255, 0.92)");
+    drawDisc(state.malletB.x, state.malletB.y, FH.MALLET_R, "rgba(160, 235, 255, 0.92)");
+    drawDisc(state.malletA.x, state.malletA.y, FH.MALLET_R, "rgba(255, 255, 255, 0.92)");
 
-    const pr = FH.PUCK_R * w;
+    const prx = FH.PUCK_R * w;
+    const pry = FH.PUCK_R * h;
     ctx.shadowColor = "rgba(100, 220, 255, 0.65)";
     ctx.shadowBlur = 14;
     ctx.beginPath();
     ctx.fillStyle = "rgba(245, 250, 255, 0.98)";
-    ctx.arc(sx(state.puck.x), sy(state.puck.y), pr, 0, Math.PI * 2);
+    ctx.ellipse(sx(state.puck.x), sy(state.puck.y), prx, pry, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
 
