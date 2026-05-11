@@ -87,12 +87,6 @@ export default function FaceHockey() {
     uiPhaseRef.current = uiPhase;
   }, [uiPhase]);
 
-  const [name, setName] = useState("");
-  const nameRef = useRef("");
-  useEffect(() => {
-    nameRef.current = name.trim();
-  }, [name]);
-
   const [status, setStatus] = useState("");
   const [role, setRole] = useState<Role | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -457,16 +451,14 @@ export default function FaceHockey() {
     ctx.lineTo(sx(0.5 + gh), sy(1 - inset));
     ctx.stroke();
 
+    /** Pixel radius from normalized r01 — true circles on screen (use min dimension). */
+    const rPx = (r01: number) => r01 * Math.min(w, h);
+
     const drawDisc = (mx: number, my: number, r01: number, col: string) => {
-      /**
-       * World hitboxes are circles in normalized space.
-       * Canvas is 2:1 (h != w) so draw an ellipse (rx/ry) to match the physics circle exactly.
-       */
-      const rx = r01 * w;
-      const ry = r01 * h;
+      const rad = rPx(r01);
       ctx.beginPath();
       ctx.fillStyle = col;
-      ctx.ellipse(sx(mx), sy(my), rx, ry, 0, 0, Math.PI * 2);
+      ctx.arc(sx(mx), sy(my), rad, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,0.35)";
       ctx.lineWidth = Math.max(1, w * 0.004);
@@ -476,13 +468,12 @@ export default function FaceHockey() {
     drawDisc(state.malletB.x, state.malletB.y, FH.MALLET_R, "rgba(160, 235, 255, 0.92)");
     drawDisc(state.malletA.x, state.malletA.y, FH.MALLET_R, "rgba(255, 255, 255, 0.92)");
 
-    const prx = FH.PUCK_R * w;
-    const pry = FH.PUCK_R * h;
+    const pr = rPx(FH.PUCK_R);
     ctx.shadowColor = "rgba(100, 220, 255, 0.65)";
     ctx.shadowBlur = 14;
     ctx.beginPath();
     ctx.fillStyle = "rgba(245, 250, 255, 0.98)";
-    ctx.ellipse(sx(state.puck.x), sy(state.puck.y), prx, pry, 0, 0, Math.PI * 2);
+    ctx.arc(sx(state.puck.x), sy(state.puck.y), pr, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
 
@@ -662,12 +653,6 @@ export default function FaceHockey() {
   }
 
   async function findMatch() {
-    const trimmed = name.trim().slice(0, 24);
-    if (!trimmed) {
-      setStatus("Enter your name first.");
-      return;
-    }
-    setName(trimmed);
     setUiPhase("matchmaking");
     setStatus("Searching…");
 
@@ -789,12 +774,12 @@ export default function FaceHockey() {
           </>
         ) : null}
 
-        <div className={styles.scoreHud}>
-          <span className={styles.scoreTag}>Player A</span>
-          <span className={styles.scoreNum}>{gs.scoreA}</span>
-          <span className={styles.scoreSep}>—</span>
-          <span className={styles.scoreNum}>{gs.scoreB}</span>
-          <span className={styles.scoreTag}>Player B</span>
+        <div className={styles.scoreHud} aria-live="polite">
+          <span className={styles.scoreSide}>A</span>
+          <span className={styles.scoreNumCompact}>{gs.scoreA}</span>
+          <span className={styles.scoreDot}>·</span>
+          <span className={styles.scoreNumCompact}>{gs.scoreB}</span>
+          <span className={styles.scoreSide}>B</span>
         </div>
 
         {FH_UI_DEBUG ? (
@@ -839,15 +824,6 @@ export default function FaceHockey() {
           <div className={styles.overlay}>
             <div className={styles.card}>
               <div className={styles.title}>FaceHockey</div>
-              <div className={styles.field}>
-                <input
-                  className={styles.input}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  maxLength={24}
-                />
-              </div>
               {showMm ? (
                 <>
                   <button type="button" className={styles.buttonSecondary} onClick={cancelMatchmaking}>
