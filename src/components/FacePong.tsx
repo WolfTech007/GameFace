@@ -14,8 +14,8 @@ import { createNoseTracker } from "@/lib/faceTracking";
 
 const QUEUE_POLL_MS = 600;
 
-/** Temporary UI debug (presentation + sync); set false to hide. */
-const FP_UI_DEBUG = true;
+/** Dev-only sync/presentation diagnostics (blue panel). Off in production builds. */
+const FP_UI_DEBUG = process.env.NODE_ENV === "development";
 
 type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
@@ -174,9 +174,9 @@ export default function FacePong() {
       },
       video: {
         facingMode: "user",
-        width: { ideal: 720 },
-        height: { ideal: 1280 },
-        frameRate: { ideal: 60, max: 60 },
+        width: { ideal: 480, max: 640 },
+        height: { ideal: 480, max: 640 },
+        frameRate: { ideal: 24, max: 30 },
       },
     });
     localStreamRef.current = stream;
@@ -264,7 +264,7 @@ export default function FacePong() {
     const s = hostStateRef.current;
     s.phase = "playing";
     s.rallyScore = 0;
-    s.ball = { x: 0.5, y: 0.5, vx: 0.0, vy: 0.22 }; // slow start downward
+    s.ball = { x: 0.5, y: 0.5, vx: 0.0, vy: 0.26 }; // slow start downward (slightly snappier)
     s.paddles.hostX = smoothedLocalPaddleRef.current;
     s.paddles.guestX = guestPaddleXRef.current;
     hostStartedAtRef.current = nowMs();
@@ -276,18 +276,7 @@ export default function FacePong() {
     const s = hostStateRef.current;
     if (s.phase !== "playing") return;
 
-    const elapsed = hostStartedAtRef.current ? (nowMs() - hostStartedAtRef.current) / 1000 : 0;
-    const speed01 = clamp(elapsed / 20, 0, 1); // reach max at 20s
-    const base = 0.22;
-    const max = 0.62;
-    const speed = lerp(base, max, speed01);
-
-    // normalize velocity to target speed
-    const mag = Math.hypot(s.ball.vx, s.ball.vy) || 1;
-    s.ball.vx = (s.ball.vx / mag) * speed;
-    s.ball.vy = (s.ball.vy / mag) * speed;
-
-    // integrate
+    // integrate (target speed computed after collisions so hit-count boosts apply immediately)
     s.ball.x += s.ball.vx * dt;
     s.ball.y += s.ball.vy * dt;
 
@@ -314,7 +303,7 @@ export default function FacePong() {
         s.ball.y = PADDLE_WORLD_Y_TOP + 0.02;
         s.ball.vy = Math.abs(s.ball.vy);
         const off = (s.ball.x - px) / (paddleW / 2);
-        s.ball.vx += off * 0.18;
+        s.ball.vx += off * 0.16;
         s.rallyScore += 1;
       } else if (s.ball.y < 0) {
         s.phase = "gameover";
@@ -328,10 +317,30 @@ export default function FacePong() {
         s.ball.y = PADDLE_WORLD_Y_BOT - 0.02;
         s.ball.vy = -Math.abs(s.ball.vy);
         const off = (s.ball.x - px) / (paddleW / 2);
-        s.ball.vx += off * 0.18;
+        s.ball.vx += off * 0.16;
         s.rallyScore += 1;
       } else if (s.ball.y > 1) {
         s.phase = "gameover";
+      }
+    }
+
+    const elapsed = hostStartedAtRef.current ? (nowMs() - hostStartedAtRef.current) / 1000 : 0;
+    /** Monotonic difficulty: time ramp + per-hit boost; never decreases mid-rally. */
+    const RAMP_S = 17;
+    const BASE_SPD = 0.26;
+    const MAX_SPD = 0.92;
+    const HIT_BOOST = 0.014;
+    const HIT_BOOST_CAP = 0.14;
+    const timeRamp = lerp(BASE_SPD, MAX_SPD, clamp(elapsed / RAMP_S, 0, 1));
+    const hitBonus = Math.min(s.rallyScore * HIT_BOOST, HIT_BOOST_CAP);
+    const targetSpeed = Math.min(MAX_SPD, timeRamp + hitBonus);
+
+    // Preserve direction; lock speed to current target (no mid-rally slowdown from collision math)
+    {
+      const m = Math.hypot(s.ball.vx, s.ball.vy);
+      if (m > 1e-8) {
+        s.ball.vx = (s.ball.vx / m) * targetSpeed;
+        s.ball.vy = (s.ball.vy / m) * targetSpeed;
       }
     }
 
@@ -675,7 +684,7 @@ export default function FacePong() {
         <div className={`${styles.half} ${styles.topHalf}`}>
           <video
             ref={remoteVideoRef}
-            className={styles.videoRemote}
+            className={role === "host" ? styles.videoRemoteHost : styles.videoRemote}
             playsInline
             autoPlay
           />

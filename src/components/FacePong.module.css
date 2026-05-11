@@ -47,12 +47,12 @@
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1);
-  filter: saturate(1.05) contrast(1.05);
 }
 
 /*
- * Remote/opponent: tabletop “across the table” — upside-down + horizontal flip so
- * nose motion matches paddle direction on screen (presentation only; stream unchanged).
+ * Remote (guest / Player B viewing host): rotate + mirror — tuned so B’s view feels correct.
+ * Remote (host / Player A viewing guest): rotate only — horizontal mirror removed so B’s nose
+ * lines up with B’s paddle on A’s screen (visual-only; stream + physics unchanged).
  */
 .videoRemote {
   position: absolute;
@@ -61,7 +61,15 @@
   height: 100%;
   object-fit: cover;
   transform: rotate(180deg) scaleX(-1);
-  filter: saturate(1.05) contrast(1.05);
+}
+
+.videoRemoteHost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: rotate(180deg);
 }
 
 /*
