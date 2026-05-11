@@ -4,7 +4,7 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/** Normalized table constants (+y down). */
+/** Normalized table constants (+y down). Radii are relative to min(canvas w,h); see scaledHypot. */
 export const FH = {
   WALL_INSET: 0.022,
   A_Y_MIN: 0.54,
@@ -19,8 +19,12 @@ export const FH = {
   /** Puck center crosses into slot → goal */
   TOP_GOAL_Y: 0.032,
   BOT_GOAL_Y: 0.968,
-  FRICTION: 0.9935,
-  MAX_SPEED: 0.88,
+  /** Fillet at rail corners (same units as WALL_INSET); keeps puck from jamming */
+  CORNER_FILLET_R: 0.045,
+  /** Height / width of playfield (canvas); collision uses min-dimension radii like the draw loop */
+  PLAYFIELD_H_OVER_W: 2,
+  FRICTION: 0.99585,
+  MAX_SPEED: 1.1,
   RALLY_RAMP_S: 48,
   MAX_SPEED_MULT: 1.55,
   MALLET_PUSH: 0.38,
@@ -35,9 +39,16 @@ function length(x: number, y: number) {
   return Math.hypot(x, y);
 }
 
-function normalize(x: number, y: number): { x: number; y: number } {
-  const L = length(x, y) || 1;
-  return { x: x / L, y: y / L };
+/** Matches circular draw rPx(r01)=r01·min(w,h): compare distances in pixel-equivalent space. */
+function scaledHypot(dx: number, dy: number, wy: number): number {
+  return Math.hypot(dx, dy * wy);
+}
+
+/** Unit direction for separation push; ‖(nx, ny·wy)‖ = 1. */
+function scaledSepDir(dx: number, dy: number, wy: number): { x: number; y: number } {
+  const D = scaledHypot(dx, dy, wy);
+  if (D < 1e-9) return { x: 1, y: 0 };
+  return { x: dx / D, y: dy / D };
 }
 
 /**
@@ -52,6 +63,7 @@ export function hostStepPhysics(
   prevA: { x: number; y: number },
   prevB: { x: number; y: number },
   rallyElapsedSec: number,
+  playfieldHOverW: number = FH.PLAYFIELD_H_OVER_W,
 ): { goal: "A" | "B" | null } {
   s.malletA = { ...malletA };
   s.malletB = { ...malletB };
@@ -59,6 +71,8 @@ export function hostStepPhysics(
   if (s.phase !== "playing" || s.puckFrozen) {
     return { goal: null };
   }
+
+  const wy = playfieldHOverW;
 
   let { x, y, vx, vy } = s.puck;
   const pr = FH.PUCK_R;
@@ -119,13 +133,62 @@ export function hostStepPhysics(
     vy = -Math.abs(vy) * FH.RESTITUTION_WALL;
   }
 
+  const Rf = FH.CORNER_FILLET_R;
+  const cornerMin = Rf + pr;
+  const eWall = FH.RESTITUTION_WALL;
+
+  const resolveRailCorner = (
+    ox: number,
+    oy: number,
+    active: boolean,
+    inQuad: (dx: number, dy: number) => boolean,
+  ) => {
+    if (!active) return;
+    const dx = x - ox;
+    const dy = y - oy;
+    if (!inQuad(dx, dy)) return;
+    const D = scaledHypot(dx, dy, wy);
+    if (D >= cornerMin || D < 1e-9) return;
+    const n = scaledSepDir(dx, dy, wy);
+    const overlap = cornerMin - D;
+    x += n.x * overlap;
+    y += n.y * overlap;
+    const vn = vx * n.x + vy * n.y;
+    if (vn < 0) {
+      vx -= (1 + eWall) * vn * n.x;
+      vy -= (1 + eWall) * vn * n.y;
+    }
+  };
+
+  resolveRailCorner(wi + pr + Rf, wi + pr + Rf, x <= goalL - pr, (dx, dy) => dx < 0 && dy < 0);
+  resolveRailCorner(1 - wi - pr - Rf, wi + pr + Rf, x >= goalR + pr, (dx, dy) => dx > 0 && dy < 0);
+  resolveRailCorner(wi + pr + Rf, 1 - wi - pr - Rf, x <= goalL - pr, (dx, dy) => dx < 0 && dy > 0);
+  resolveRailCorner(1 - wi - pr - Rf, 1 - wi - pr - Rf, x >= goalR + pr, (dx, dy) => dx > 0 && dy > 0);
+
+  // Corner resolve can nudge past a rail plane — clamp again
+  if (x < wi + pr) {
+    x = wi + pr;
+    vx = Math.abs(vx) * eWall;
+  } else if (x > 1 - wi - pr) {
+    x = 1 - wi - pr;
+    vx = -Math.abs(vx) * eWall;
+  }
+  if (y < wi + pr && !(x > goalL - pr && x < goalR + pr)) {
+    y = wi + pr;
+    vy = Math.abs(vy) * eWall;
+  }
+  if (y > 1 - wi - pr && !(x > goalL - pr && x < goalR + pr)) {
+    y = 1 - wi - pr;
+    vy = -Math.abs(vy) * eWall;
+  }
+
   const collide = (mx: number, my: number, mvx: number, mvy: number) => {
     const dx = x - mx;
     const dy = y - my;
-    const dist = length(dx, dy);
+    const dist = scaledHypot(dx, dy, wy);
     const minD = FH.MALLET_R + pr;
     if (dist >= minD || dist < 1e-6) return;
-    const n = normalize(dx, dy);
+    const n = scaledSepDir(dx, dy, wy);
     const overlap = minD - dist;
     x += n.x * overlap;
     y += n.y * overlap;
@@ -141,6 +204,27 @@ export function hostStepPhysics(
   const dtx = 1 / Math.max(dt, 1 / 120);
   collide(malletA.x, malletA.y, (malletA.x - prevA.x) * dtx, (malletA.y - prevA.y) * dtx);
   collide(malletB.x, malletB.y, (malletB.x - prevB.x) * dtx, (malletB.y - prevB.y) * dtx);
+
+  resolveRailCorner(wi + pr + Rf, wi + pr + Rf, x <= goalL - pr, (dx, dy) => dx < 0 && dy < 0);
+  resolveRailCorner(1 - wi - pr - Rf, wi + pr + Rf, x >= goalR + pr, (dx, dy) => dx > 0 && dy < 0);
+  resolveRailCorner(wi + pr + Rf, 1 - wi - pr - Rf, x <= goalL - pr, (dx, dy) => dx < 0 && dy > 0);
+  resolveRailCorner(1 - wi - pr - Rf, 1 - wi - pr - Rf, x >= goalR + pr, (dx, dy) => dx > 0 && dy > 0);
+
+  if (x < wi + pr) {
+    x = wi + pr;
+    vx = Math.abs(vx) * eWall;
+  } else if (x > 1 - wi - pr) {
+    x = 1 - wi - pr;
+    vx = -Math.abs(vx) * eWall;
+  }
+  if (y < wi + pr && !(x > goalL - pr && x < goalR + pr)) {
+    y = wi + pr;
+    vy = Math.abs(vy) * eWall;
+  }
+  if (y > 1 - wi - pr && !(x > goalL - pr && x < goalR + pr)) {
+    y = 1 - wi - pr;
+    vy = -Math.abs(vy) * eWall;
+  }
 
   sp = length(vx, vy);
   if (sp > maxSp) {

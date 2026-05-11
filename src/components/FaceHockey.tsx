@@ -339,7 +339,10 @@ export default function FaceHockey() {
     const pb = { ...prevMalletBRef.current };
 
     const before = cloneFaceHockeyState(s);
-    const hit = hostStepPhysics(s, dt, ma, mb, pa, pb, rallySec);
+    const canvas = canvasRef.current;
+    const wy =
+      canvas && canvas.width > 0 ? canvas.height / canvas.width : FH.PLAYFIELD_H_OVER_W;
+    const hit = hostStepPhysics(s, dt, ma, mb, pa, pb, rallySec, wy);
 
     prevMalletARef.current = { ...ma };
     prevMalletBRef.current = { ...mb };
@@ -426,7 +429,16 @@ export default function FaceHockey() {
     const inset = FH.WALL_INSET;
     ctx.strokeStyle = "rgba(120, 255, 220, 0.35)";
     ctx.lineWidth = Math.max(2, w * 0.008);
-    ctx.strokeRect(sx(inset), sy(inset), sx(1 - 2 * inset), sy(1 - 2 * inset));
+    const railR = Math.min(w, h) * FH.CORNER_FILLET_R;
+    const ri = sx(1 - 2 * inset);
+    const railH = sy(1 - 2 * inset);
+    ctx.beginPath();
+    if (typeof ctx.roundRect === "function") {
+      ctx.roundRect(sx(inset), sy(inset), ri, railH, railR);
+    } else {
+      ctx.rect(sx(inset), sy(inset), ri, railH);
+    }
+    ctx.stroke();
 
     ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
     ctx.lineWidth = Math.max(1, w * 0.004);
@@ -465,8 +477,8 @@ export default function FaceHockey() {
       ctx.stroke();
     };
 
-    drawDisc(state.malletB.x, state.malletB.y, FH.MALLET_R, "rgba(160, 235, 255, 0.92)");
-    drawDisc(state.malletA.x, state.malletA.y, FH.MALLET_R, "rgba(255, 255, 255, 0.92)");
+    drawDisc(state.malletB.x, state.malletB.y, FH.MALLET_R, "rgba(95, 165, 255, 0.92)");
+    drawDisc(state.malletA.x, state.malletA.y, FH.MALLET_R, "rgba(255, 92, 92, 0.92)");
 
     const pr = rPx(FH.PUCK_R);
     ctx.shadowColor = "rgba(100, 220, 255, 0.65)";
