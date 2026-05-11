@@ -1,0 +1,59 @@
+/**
+ * GameFace — global design tokens (premium social / broadcast hybrid).
+ * Import once from globals.css.
+ */
+
+:root {
+  /* Canvas */
+  --gf-bg-0: #05070f;
+  --gf-bg-1: #0a1020;
+  --gf-bg-2: #121a30;
+  --gf-glow-ambient: rgba(96, 165, 250, 0.08);
+  --gf-glow-warm: rgba(251, 191, 36, 0.06);
+
+  /* Core duel identity */
+  --gf-you: #38bdf8;
+  --gf-you-soft: rgba(56, 189, 248, 0.35);
+  --gf-opponent: #fb7185;
+  --gf-opponent-soft: rgba(251, 113, 133, 0.35);
+
+  /* Per-game accents (tasteful, not neon gamer) */
+  --gf-accent-charades: #f59e0b;
+  --gf-accent-charades-soft: rgba(245, 158, 11, 0.25);
+  --gf-accent-staring: #3b82f6;
+  --gf-accent-staring-soft: rgba(59, 130, 246, 0.22);
+  --gf-accent-facepong: #22d3ee;
+  --gf-accent-facepong-soft: rgba(34, 211, 238, 0.22);
+  --gf-accent-facecard: #a78bfa;
+  --gf-accent-facecard-soft: rgba(167, 139, 250, 0.22);
+  --gf-accent-hockey: #34d399;
+  --gf-accent-hockey-soft: rgba(52, 211, 153, 0.2);
+  --gf-accent-rankit: #f472b6;
+  --gf-accent-rankit-soft: rgba(244, 114, 182, 0.2);
+
+  /* Surfaces */
+  --gf-surface-0: rgba(255, 255, 255, 0.04);
+  --gf-surface-1: rgba(255, 255, 255, 0.07);
+  --gf-stroke: rgba(255, 255, 255, 0.12);
+  --gf-stroke-strong: rgba(255, 255, 255, 0.2);
+
+  /* Type */
+  --gf-text: rgba(255, 255, 255, 0.94);
+  --gf-text-muted: rgba(255, 255, 255, 0.62);
+  --gf-text-dim: rgba(255, 255, 255, 0.42);
+
+  /* Geometry */
+  --gf-radius-sm: 12px;
+  --gf-radius-md: 18px;
+  --gf-radius-lg: 24px;
+  --gf-radius-xl: 28px;
+
+  /* Motion (respect prefers-reduced-motion in components) */
+  --gf-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --gf-duration-fast: 160ms;
+  --gf-duration-med: 280ms;
+
+  /* Layout */
+  --gf-max-content: 520px;
+  --gf-nav-h: 56px;
+}

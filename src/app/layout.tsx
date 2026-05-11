@@ -1,10 +1,17 @@
 import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--gf-font-body",
+});
 
 export const metadata: Metadata = {
-  title: "FaceBreaker",
-  description: "Brick Breaker controlled by your nose.",
+  title: "GameFace — webcam games",
+  description: "1v1 webcam social games. Quick matches, friends, faces first.",
 };
 
 export const viewport: Viewport = {
@@ -17,9 +24,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={inter.variable}>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }
-

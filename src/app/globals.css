@@ -1,12 +1,33 @@
+@import "../styles/gameface-tokens.css";
+
 html,
 body {
   padding: 0;
   margin: 0;
-  height: 100%;
-  background: #000;
-  color: #fff;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
-    Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  min-height: 100%;
+  color: var(--gf-text);
+  font-family: var(--gf-font-body), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+    Helvetica, Arial;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--gf-bg-0);
+  background-image:
+    radial-gradient(ellipse 120% 80% at 50% -20%, var(--gf-glow-ambient), transparent 55%),
+    radial-gradient(ellipse 90% 60% at 100% 10%, var(--gf-glow-warm), transparent 45%),
+    linear-gradient(180deg, var(--gf-bg-1) 0%, var(--gf-bg-0) 38%, #020308 100%);
+}
+
+/* Subtle film grain (no image asset). */
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
 }
 
 * {
@@ -24,3 +45,12 @@ button {
   font: inherit;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
