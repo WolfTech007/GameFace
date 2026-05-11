@@ -372,6 +372,11 @@ export default function FacePong() {
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
+    const ui = uiPhaseRef.current;
+    if (ui === "menu" || ui === "matchmaking" || ui === "lobby") {
+      return;
+    }
+
     const screenY = (y01: number) => y01 * h;
 
     // subtle overlay

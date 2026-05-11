@@ -82,6 +82,7 @@
   z-index: 3;
   transform: rotate(180deg);
   transform-origin: center center;
+  /* Must not sit above menu overlays or it steals taps (game uses nose, not canvas). */
   pointer-events: none;
 }
 
@@ -92,6 +93,7 @@
   width: 100%;
   height: 100%;
   touch-action: none;
+  pointer-events: none;
 }
 
 .hud {
@@ -182,6 +184,7 @@
 .overlay {
   position: absolute;
   inset: 0;
+  z-index: 50;
   display: grid;
   place-items: center;
   padding: 12px;
