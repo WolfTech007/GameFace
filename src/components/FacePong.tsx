@@ -707,14 +707,7 @@ export default function FacePong() {
           <canvas ref={canvasRef} className={styles.canvas} />
         )}
 
-        <div className={styles.hud}>
-          <div className={styles.pill}>Rally: {rallyScore}</div>
-          <div className={styles.pill}>
-            FacePong {opponentConnected ? "• 2P" : "• 1P"}
-          </div>
-        </div>
-
-        {FP_UI_DEBUG && role ? (
+        {role && opponentConnected ? (
           <>
             <div className={`${styles.debugPlayerTag} ${styles.debugPlayerTagTop}`} title="World top paddle / opponent feed">
               {role === "host" ? "Player B · opponent" : "Player A · opponent"}
@@ -724,6 +717,13 @@ export default function FacePong() {
             </div>
           </>
         ) : null}
+
+        <div className={styles.hud}>
+          <div className={styles.pill}>Rally: {rallyScore}</div>
+          <div className={styles.pill}>
+            FacePong {opponentConnected ? "• 2P" : "• 1P"}
+          </div>
+        </div>
 
         {FP_UI_DEBUG ? (
           <div className={styles.debugWorld}>
