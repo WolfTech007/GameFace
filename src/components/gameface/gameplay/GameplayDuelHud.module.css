@@ -1,0 +1,134 @@
+/**
+ * Minimal dual-player HUD — FaceTime × broadcast.
+ * Keep total vertical footprint tiny (~44px + safe area).
+ */
+
+.bar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px max(4px, env(safe-area-inset-top, 0px));
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(6, 10, 22, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.sideOpponent {
+  border-color: rgba(251, 113, 133, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(251, 113, 133, 0.12),
+    0 12px 40px rgba(251, 113, 133, 0.08);
+}
+
+.sideYou {
+  flex-direction: row-reverse;
+  text-align: right;
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.12),
+    0 12px 40px rgba(56, 189, 248, 0.08);
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.05));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.sideYou .avatar {
+  background: linear-gradient(135deg, var(--gf-you), #0ea5e9);
+}
+
+.sideOpponent .avatar {
+  background: linear-gradient(135deg, var(--gf-opponent), #f43f5e);
+}
+
+.meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.name {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.96);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 28vw;
+}
+
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #4ade80;
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.75);
+  flex-shrink: 0;
+}
+
+.subRow {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.score {
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.center {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.badge {
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.38);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveDot {
+    box-shadow: none;
+  }
+}

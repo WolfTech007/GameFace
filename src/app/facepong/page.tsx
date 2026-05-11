@@ -1,8 +1,5 @@
-"use client";
+import { GameIntro } from "@/components/gameface/GameIntro";
 
-import FacePong from "@/components/FacePong";
-
-export default function FacePongPage() {
-  return <FacePong />;
+export default function FacePongIntroPage() {
+  return <GameIntro slug="facepong" />;
 }
-

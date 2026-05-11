@@ -52,4 +52,9 @@
   /* Layout */
   --gf-max-content: 520px;
   --gf-nav-h: 56px;
+
+  /* Live gameplay — cinematic HUD layer */
+  --gf-play-scrim: rgba(2, 4, 12, 0.65);
+  --gf-play-glass: rgba(8, 12, 22, 0.55);
+  --gf-play-hud-blur: 18px;
 }

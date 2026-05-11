@@ -1,7 +1,5 @@
-"use client";
+import { GameIntro } from "@/components/gameface/GameIntro";
 
-import FaceCard from "@/components/FaceCard";
-
-export default function FaceCardPage() {
-  return <FaceCard />;
+export default function FaceCardIntroPage() {
+  return <GameIntro slug="facecard" />;
 }

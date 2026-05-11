@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import styles from "./StaringContest.module.css";
 import {
   connectGuestToHost,
@@ -21,6 +22,8 @@ import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
+import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 type Phase =
   | "intro"
@@ -40,6 +43,12 @@ const QUEUE_POLL_MS = 600;
 
 const VIDEO_DEBUG =
   typeof process !== "undefined" && process.env.NODE_ENV === "development";
+
+export type StaringContestProps = {
+  autoJoinPublicQueue?: boolean;
+  fromRandomMatch?: boolean;
+  introHref?: string;
+};
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -84,7 +93,12 @@ function median(nums: number[]) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-export default function StaringContest() {
+export default function StaringContest({
+  autoJoinPublicQueue = false,
+  fromRandomMatch: _fromRandomMatch = false,
+  introHref,
+}: StaringContestProps) {
+  const router = useRouter();
   const { profile } = useGameFaceProfile();
   const clientId = profile.userId;
 
@@ -102,7 +116,7 @@ export default function StaringContest() {
   /** Dev-only: forces re-read of video debug fields. */
   const [, setVideoDebugTick] = useState(0);
 
-  const [phase, setPhase] = useState<Phase>("intro");
+  const [phase, setPhase] = useState<Phase>(() => (autoJoinPublicQueue ? "queue" : "intro"));
   const phaseRef = useRef<Phase>("intro");
   useEffect(() => {
     phaseRef.current = phase;
@@ -349,6 +363,12 @@ export default function StaringContest() {
     }, QUEUE_POLL_MS);
   }
 
+  useEffect(() => {
+    if (!autoJoinPublicQueue) return;
+    void findMatch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot queue join from GameIntro
+  }, [autoJoinPublicQueue]);
+
   async function applyMatch(roomId: string, r: Role, opp: string) {
     setPeerRoomId(roomId);
     setRole(r);
@@ -488,6 +508,7 @@ export default function StaringContest() {
 
   function returnToArcade() {
     leaveMatch();
+    if (introHref) router.push(introHref);
   }
 
   function wireData(conn: any, isHost: boolean) {
@@ -800,7 +821,24 @@ export default function StaringContest() {
       ) : null}
 
       {showGameChrome ? (
-        <div className={styles.gameWrap}>
+        <div className={gp.surfaceRoot}>
+          <div className={gp.surfaceVignette} aria-hidden />
+          <GameplayDuelHud
+            gameBadge="Stare"
+            opponent={{
+              variant: "opponent",
+              displayName: displayRemoteName,
+              online: true,
+              stat: phase === "playing" ? "Live" : undefined,
+            }}
+            you={{
+              variant: "you",
+              displayName: displayLocalName,
+              handle: `@${profile.username}`,
+              level: profile.level,
+              online: true,
+            }}
+          />
           {VIDEO_DEBUG ? (
             <div className={styles.debugOverlay} aria-hidden>
               <div>localCameraReady: {String(localCameraReady)}</div>
@@ -814,109 +852,125 @@ export default function StaringContest() {
               <div>gameState: {phase}</div>
             </div>
           ) : null}
-          <div className={styles.splitStage}>
-            <div className={styles.splitTop}>
-              <video
-                ref={remoteVideoRef}
-                className={`${styles.video} ${styles.videoRemote}`}
-                playsInline
-                autoPlay
-                muted
-                onPlaying={() => {
-                  setRemoteVideoPlaying(true);
-                  bumpVideoDebug();
-                }}
-                onPause={() => {
-                  setRemoteVideoPlaying(false);
-                  bumpVideoDebug();
-                }}
-                onLoadedData={() => bumpVideoDebug()}
-              />
-              <div className={styles.nameTag}>{displayRemoteName}</div>
-            </div>
-
-            <div className={styles.seamWrap} aria-hidden={phase !== "playing"}>
-              <div className={styles.seamLine} />
-              {phase === "playing" ? (
-                <div className={styles.timerSeam} role="timer" aria-live="off">
-                  <span className={styles.timerSeamText}>{formatStopwatchMs(playingElapsedMs)}</span>
-                </div>
-              ) : null}
-            </div>
-
-            <div className={styles.splitBottom}>
-              <video
-                ref={localVideoRef}
-                className={`${styles.video} ${styles.videoLocal}`}
-                playsInline
-                muted
-                autoPlay
-              />
-              <div className={styles.nameTag}>{displayLocalName}</div>
-
-            {phase === "countdown" && countdownN !== null && countdownN > 0 ? (
-              <div className={styles.countdownFlash}>{countdownN}</div>
-            ) : null}
-
-            {phase === "countdown" && countdownN === 0 ? (
-              <div className={styles.countdownFlash}>Stare!</div>
-            ) : null}
-
-            {phase === "playing" && warnFace ? (
-              <div className={styles.warnBanner}>Face not detected — get back in frame!</div>
-            ) : null}
-
-            {phase === "lobby" ? (
-              <div className={styles.overlayCard}>
-                <div className={styles.card}>
-                  <div className={styles.cardTitle}>Opponent found.</div>
-                  <div className={styles.cardBody}>
-                    Tap Ready when you&apos;re set. The game starts when both players are ready.
+          <div className={gp.surfaceMain}>
+            <div className={gp.surfaceStage}>
+              <div className={gp.surfaceSplit}>
+                {phase === "countdown" && countdownN !== null && countdownN > 0 ? (
+                  <div className={gp.countdownCurtain} aria-hidden>
+                    <div className={gp.countdownGlyph}>{countdownN}</div>
                   </div>
-                  {!dataChannelReady ? (
-                    <div className={styles.cardBodyMuted}>Connecting to opponent…</div>
-                  ) : hasRemoteStream && !remoteVideoPlaying ? (
-                    <div className={styles.cardBodyMuted}>Waiting for opponent video…</div>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={styles.primaryBtn}
-                    onClick={toggleReady}
-                    disabled={!dataChannelReady || !localCameraReady}
-                  >
-                    {localReady ? "Cancel Ready" : "Ready"}
-                  </button>
-                  <div className={styles.cardBody}>
-                    Opponent: {remoteReady ? "Ready ✓" : "Not ready yet"}
+                ) : null}
+                {phase === "countdown" && countdownN === 0 ? (
+                  <div className={gp.countdownCurtain} aria-hidden>
+                    <div className={gp.stinger}>Stare!</div>
                   </div>
-                </div>
-              </div>
-            ) : null}
+                ) : null}
 
-            {phase === "ended" ? (
-              <div className={styles.overlayCard}>
-                <div className={styles.card}>
-                  <div className={`${styles.cardTitle} ${endedWinner ? styles.win : styles.lose}`}>
-                    {endedWinner ? "You win!" : "You lose!"}
-                  </div>
-                  <div className={styles.cardBody}>
-                    Winner:{" "}
-                    {endedWinner ? displayLocalName : displayRemoteName}
-                  </div>
-                  <div className={styles.cardBody}>
-                    You kept your eyes open for {roundSeconds.toFixed(2)} seconds.
-                  </div>
-                  <RematchBar
-                    iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
-                    theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
-                    onRematch={requestRematch}
-                    onLeave={leaveMatch}
-                    opponentLeft={opponentLeftMatch}
-                    onReturnArcade={returnToArcade}
+                <div
+                  className={`${gp.surfacePane} ${gp.surfacePaneOpponent} ${phase === "ended" && endedWinner ? gp.dimPane : ""}`}
+                >
+                  <video
+                    ref={remoteVideoRef}
+                    className={`${gp.surfaceFeed} ${styles.video} ${styles.videoRemote}`}
+                    playsInline
+                    autoPlay
+                    muted
+                    onPlaying={() => {
+                      setRemoteVideoPlaying(true);
+                      bumpVideoDebug();
+                    }}
+                    onPause={() => {
+                      setRemoteVideoPlaying(false);
+                      bumpVideoDebug();
+                    }}
+                    onLoadedData={() => bumpVideoDebug()}
                   />
                 </div>
+
+                {phase === "playing" ? (
+                  <div className={gp.surfaceCenterHud} role="timer" aria-live="off">
+                    <span className={gp.surfaceCenterMuted}>Hold eye contact</span>
+                    <span className={gp.surfaceCenterTimer}>{formatStopwatchMs(playingElapsedMs)}</span>
+                  </div>
+                ) : null}
+
+                <div
+                  className={`${gp.surfacePane} ${gp.surfacePaneYou} ${phase === "ended" && !endedWinner ? gp.dimPane : ""}`}
+                >
+                  <video
+                    ref={localVideoRef}
+                    className={`${gp.surfaceFeed} ${gp.surfaceFeedMirror} ${styles.video} ${styles.videoLocal}`}
+                    playsInline
+                    muted
+                    autoPlay
+                  />
+
+                  {phase === "playing" && warnFace ? (
+                    <div className={gp.riskRibbon}>Face lost · get back in frame</div>
+                  ) : null}
+
+                  {phase === "lobby" ? (
+                    <div className={gp.floatingGlass}>
+                      <div className={gp.glassPanel}>
+                        <div className={gp.resultKicker}>Lobby</div>
+                        <div className={gp.resultTitle}>Opponent found</div>
+                        <div className={gp.resultDetail}>
+                          Tap ready when your camera is set. Both players must ready up.
+                        </div>
+                        {!dataChannelReady ? (
+                          <div className={gp.resultDetail}>Connecting…</div>
+                        ) : hasRemoteStream && !remoteVideoPlaying ? (
+                          <div className={gp.resultDetail}>Waiting for opponent video…</div>
+                        ) : null}
+                        <button
+                          type="button"
+                          className={gp.surfacePill}
+                          style={{ marginTop: "14px", width: "100%" }}
+                          onClick={toggleReady}
+                          disabled={!dataChannelReady || !localCameraReady}
+                        >
+                          {localReady ? "Cancel ready" : "Ready"}
+                        </button>
+                        <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
+                          Them: {remoteReady ? "Ready ✓" : "Waiting"}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {phase === "ended" ? (
+                    <div className={gp.floatingGlass}>
+                      <div className={gp.glassPanel}>
+                        {!endedWinner ? (
+                          <>
+                            <div className={gp.stinger} style={{ fontSize: "clamp(26px, 9vw, 44px)" }}>
+                              Blink detected
+                            </div>
+                            <div className={gp.stingerSub}>You blinked first — round over.</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className={gp.resultKicker}>Victory</div>
+                            <div className={gp.resultTitle}>You held longer</div>
+                          </>
+                        )}
+                        <div className={gp.resultDetail}>
+                          Winner · {endedWinner ? displayLocalName : displayRemoteName}
+                        </div>
+                        <div className={gp.resultDetail}>Time · {roundSeconds.toFixed(2)}s</div>
+                        <RematchBar
+                          iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
+                          theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
+                          onRematch={requestRematch}
+                          onLeave={leaveMatch}
+                          opponentLeft={opponentLeftMatch}
+                          onReturnArcade={returnToArcade}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            ) : null}
             </div>
           </div>
         </div>

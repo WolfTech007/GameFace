@@ -10,10 +10,10 @@ export type RandomGameMeta = {
 };
 
 export const RANDOM_GAME_POOL: RandomGameMeta[] = [
-  { id: "charades", label: "Charades", path: "/charades", weight: 0.34 },
-  { id: "staring", label: "Staring Contest", path: "/staring-contest", weight: 0.26 },
-  { id: "facepong", label: "FacePong", path: "/facepong", weight: 0.26 },
-  { id: "facecard", label: "Face Card", path: "/facecard", weight: 0.14 },
+  { id: "charades", label: "Charades", path: "/charades/play", weight: 0.34 },
+  { id: "staring", label: "Staring Contest", path: "/staring-contest/play", weight: 0.26 },
+  { id: "facepong", label: "FacePong", path: "/facepong/play", weight: 0.26 },
+  { id: "facecard", label: "Face Card", path: "/facecard/play", weight: 0.14 },
 ];
 
 export function pickWeightedGame(): RandomGameMeta {

@@ -1,8 +1,5 @@
-"use client";
+import { GameIntro } from "@/components/gameface/GameIntro";
 
-import LipReader from "@/components/LipReader";
-
-/** Product name: Charades (formerly Lip Reader in codebase). */
-export default function CharadesPage() {
-  return <LipReader />;
+export default function CharadesIntroPage() {
+  return <GameIntro slug="charades" />;
 }

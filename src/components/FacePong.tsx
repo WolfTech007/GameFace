@@ -1,4 +1,7 @@
+"use client";
+
 import React, { useEffect, useReducer, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import styles from "./FacePong.module.css";
 import {
   connectGuestToHost,
@@ -15,6 +18,8 @@ import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
+import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
 
@@ -93,7 +98,18 @@ function nowMs() {
 const PADDLE_WORLD_Y_TOP = 0.08;
 const PADDLE_WORLD_Y_BOT = 0.92;
 
-export default function FacePong() {
+export type FacePongProps = {
+  autoJoinPublicQueue?: boolean;
+  fromRandomMatch?: boolean;
+  introHref?: string;
+};
+
+export default function FacePong({
+  autoJoinPublicQueue = false,
+  fromRandomMatch: _fromRandomMatch = false,
+  introHref,
+}: FacePongProps) {
+  const router = useRouter();
   const { profile } = useGameFaceProfile();
   const clientId = profile.userId;
 
@@ -103,7 +119,7 @@ export default function FacePong() {
   /** Size canvas from frame rect on both roles so guest rotation never skews aspect ratio. */
   const frameRef = useRef<HTMLDivElement | null>(null);
 
-  const [uiPhase, setUiPhase] = useState<UiPhase>("menu");
+  const [uiPhase, setUiPhase] = useState<UiPhase>(() => (autoJoinPublicQueue ? "matchmaking" : "menu"));
   const uiPhaseRef = useRef<UiPhase>("menu");
   useEffect(() => {
     uiPhaseRef.current = uiPhase;
@@ -693,12 +709,22 @@ export default function FacePong() {
     }, QUEUE_POLL_MS);
   }
 
+  useEffect(() => {
+    if (!autoJoinPublicQueue) return;
+    void findMatch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot queue join from GameIntro
+  }, [autoJoinPublicQueue]);
+
   function cancelMatchmaking() {
     if (matchPollRef.current) {
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
     }
     void leaveQueue();
+    if (introHref) {
+      router.push(introHref);
+      return;
+    }
     setUiPhase("menu");
     setStatus("Idle");
   }
@@ -727,6 +753,7 @@ export default function FacePong() {
 
   function returnToArcade() {
     leaveMatch();
+    if (introHref) router.push(introHref);
   }
 
   useEffect(() => {
@@ -785,7 +812,37 @@ export default function FacePong() {
   const showGameOver = uiPhase === "gameover";
 
   return (
-    <main className={styles.root}>
+    <main className={gp.surfaceRoot}>
+      <div className={gp.surfaceVignette} aria-hidden />
+      <GameplayDuelHud
+        gameBadge="FacePong"
+        opponent={{
+          variant: "opponent",
+          displayName: opponentConnected ? "Opponent" : showMatchmaking ? "Matchmaking…" : "Arena",
+          online: opponentConnected || showMatchmaking,
+          stat: opponentConnected && uiPhase === "playing" ? `Rally ${rallyScore}` : undefined,
+        }}
+        you={{
+          variant: "you",
+          displayName: profile.displayName.trim() || "You",
+          handle: `@${profile.username}`,
+          level: profile.level,
+          online: true,
+        }}
+      />
+      <div
+        className={gp.surfaceMain}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          width: "100%",
+          maxWidth: "100%",
+        }}
+      >
       <div ref={frameRef} className={styles.frame}>
         {/* Same layout for host + guest: opponent top, self bottom (presentation only). */}
         <div className={`${styles.half} ${styles.topHalf}`}>
@@ -995,6 +1052,7 @@ export default function FacePong() {
             </div>
           </div>
         ) : null}
+      </div>
       </div>
     </main>
   );

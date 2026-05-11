@@ -33,7 +33,7 @@ export default function Page() {
             <h2 id="library-heading" className={styles.sectionTitle}>
               Game library
             </h2>
-            <p className={styles.sectionHint}>Large cards · tap to play</p>
+            <p className={styles.sectionHint}>Large cards · preview rules, then find a match</p>
           </div>
 
           <GFGameCard

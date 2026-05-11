@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useReducer, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import styles from "./LipReader.module.css";
 import {
   connectGuestToHost,
@@ -23,10 +24,21 @@ import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
+import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
 /** Set true locally to verify round/guess sync; keep false in production. */
 const LIP_READER_UI_DEBUG = false;
+
+export type LipReaderProps = {
+  /** From `/charades/play?queue=1` — starts public matchmaking on mount */
+  autoJoinPublicQueue?: boolean;
+  /** From `/charades/play?gf=1` after universal random match (pending payload in session) */
+  fromRandomMatch?: boolean;
+  /** Navigate here when leaving back to the game intro */
+  introHref?: string;
+};
 
 type Role = "host" | "guest";
 
@@ -53,14 +65,19 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
   throw lastErr instanceof Error ? lastErr : new Error("Could not connect to opponent.");
 }
 
-export default function LipReader() {
+export default function LipReader({
+  autoJoinPublicQueue = false,
+  fromRandomMatch = false,
+  introHref,
+}: LipReaderProps) {
+  const router = useRouter();
   const { profile } = useGameFaceProfile();
   const clientId = profile.userId;
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  const [uiMenu, setUiMenu] = useState(true);
+  const [uiMenu, setUiMenu] = useState(() => !autoJoinPublicQueue && !fromRandomMatch);
   const [matchmaking, setMatchmaking] = useState(false);
   const nameRef = useRef(profile.displayName.trim().slice(0, 24) || "Player");
   useEffect(() => {
@@ -364,6 +381,7 @@ export default function LipReader() {
 
   function returnToArcade() {
     leaveMatch();
+    if (introHref) router.push(introHref);
   }
 
   function submitGuess() {
@@ -569,6 +587,12 @@ export default function LipReader() {
     }, QUEUE_POLL_MS);
   }
 
+  useEffect(() => {
+    if (!autoJoinPublicQueue) return;
+    void findMatch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot queue join from GameIntro
+  }, [autoJoinPublicQueue]);
+
   function cancelMatchmaking() {
     if (matchPollRef.current) {
       clearInterval(matchPollRef.current);
@@ -577,6 +601,11 @@ export default function LipReader() {
     void leaveQueue();
     setMatchmaking(false);
     setStatus("");
+    if (introHref) {
+      router.push(introHref);
+      return;
+    }
+    setUiMenu(true);
   }
 
   const gs = gameStateRef.current;
@@ -587,7 +616,11 @@ export default function LipReader() {
   const opponentName =
     role === "host" ? gs.guestName || "Opponent" : role === "guest" ? gs.hostName || "Opponent" : "Opponent";
   const myDisplayName =
-    role === "host" ? gs.hostName || name || "You" : role === "guest" ? gs.guestName || name || "You" : "You";
+    role === "host"
+      ? gs.hostName || nameRef.current || "You"
+      : role === "guest"
+        ? gs.guestName || nameRef.current || "You"
+        : "You";
 
   useEffect(() => {
     const stream = localStreamRef.current;
@@ -658,71 +691,90 @@ export default function LipReader() {
     setGuessInput("");
   }, [viewGen]);
 
-  return (
-    <main className={styles.root}>
-      <div className={styles.gameColumn}>
-        <div className={styles.topBar}>
-          <span className={styles.topBarTitle}>CHARADES</span>
-          <span className={styles.topBarSep}>·</span>
-          <span className={styles.topBarSub}>Act it out · guess the word</span>
-        </div>
+  const showDuelHud = !uiMenu;
 
-        <div className={styles.frame}>
-          <div className={styles.gridsplit}>
+  return (
+    <main className={gp.surfaceRoot}>
+      <div className={gp.surfaceVignette} aria-hidden />
+      {showDuelHud ? (
+        <GameplayDuelHud
+          gameBadge="Charades"
+          opponent={{
+            variant: "opponent",
+            displayName: matchmaking && !opponentConnected ? "Finding player…" : opponentName,
+            online: opponentConnected || matchmaking,
+            stat: undefined,
+          }}
+          you={{
+            variant: "you",
+            displayName: profile.displayName.trim() || "You",
+            handle: `@${profile.username}`,
+            level: profile.level,
+            online: true,
+            stat:
+              opponentConnected && gs.phase === "playing"
+                ? `${gs.guessesRemaining} guesses`
+                : undefined,
+          }}
+        />
+      ) : null}
+
+      <div className={gp.surfaceMain}>
+        <div className={gp.surfaceStage}>
+          <div className={gp.surfaceSplit}>
             {gs.phase === "countdown" && gs.countdownN != null ? (
-              <div className={styles.countdownOverlayFull} aria-hidden>
-                <div className={styles.countdownNum}>{gs.countdownN}</div>
+              <div className={gp.countdownCurtain} aria-hidden>
+                <div className={gp.countdownGlyph}>{gs.countdownN}</div>
               </div>
             ) : null}
-            <div className={`${styles.half} ${styles.halfTop}`}>
-              <video ref={remoteVideoRef} className={styles.videoRemote} playsInline autoPlay />
-              <div className={`${styles.labelBar} ${styles.labelTop}`}>{opponentName}</div>
+            <div className={`${gp.surfacePane} ${gp.surfacePaneOpponent}`}>
+              <video ref={remoteVideoRef} className={gp.surfaceFeed} playsInline autoPlay />
             </div>
             {!uiMenu && !matchmaking && opponentConnected && (gs.phase === "playing" || gs.phase === "countdown") ? (
-              <div className={styles.hudFloat} aria-live="polite">
-                {gs.phase === "countdown" ? <span className={styles.hudChip}>Get ready…</span> : null}
+              <div className={gp.surfaceCenterHud} aria-live="polite">
+                {gs.phase === "countdown" ? <span className={gp.surfaceCenterMuted}>Round starting</span> : null}
                 {gs.phase === "playing" ? (
                   <>
-                    <span className={styles.hudChip}>{iAmCommunicator ? "Acting" : "Guessing"}</span>
-                    <span className={styles.hudTimer}>{elapsedSec}s</span>
-                    <span className={styles.hudGuesses}>· {gs.guessesRemaining} left</span>
+                    <span className={gp.surfaceCenterMuted}>{iAmCommunicator ? "You act" : "You guess"}</span>
+                    <span className={gp.surfaceCenterTimer}>{elapsedSec}s</span>
+                    <span className={gp.surfaceCenterMuted}>{gs.guessesRemaining} left</span>
                   </>
                 ) : null}
               </div>
             ) : null}
-            <div className={`${styles.half} ${styles.halfBottom}`}>
-              <video ref={localVideoRef} className={styles.video} playsInline muted autoPlay />
-              <div className={styles.labelBar}>{myDisplayName}</div>
+            <div className={`${gp.surfacePane} ${gp.surfacePaneYou}`}>
+              <video ref={localVideoRef} className={`${gp.surfaceFeed} ${gp.surfaceFeedMirror}`} playsInline muted autoPlay />
               {showWordToMe ? (
-                <div className={styles.wordRevealChip}>
-                  <div className={styles.wordRevealLabel}>Your word</div>
-                  <div className={styles.wordRevealText}>{gs.secretWord}</div>
+                <div className={gp.wordCard}>
+                  <div className={gp.wordCardLabel}>Your word</div>
+                  <div className={gp.wordCardText}>{gs.secretWord}</div>
                 </div>
               ) : null}
             </div>
           </div>
 
           {!uiMenu && !matchmaking && opponentConnected && gs.phase === "playing" ? (
-            <div className={styles.hintStrip}>
-              {iAmCommunicator ? "Mic muted — act it out." : "Their mic is muted — watch their lips."}
+            <div className={gp.hintFloat}>
+              {iAmCommunicator ? "Mic off while acting — go big." : "Their mic is off — read their lips."}
               {gs.guesserHint && iAmGuesser ? <span className={styles.hintNope}> {gs.guesserHint}</span> : null}
             </div>
           ) : null}
 
           {!uiMenu && !matchmaking && opponentConnected && gs.phase === "round_result" ? (
-            <div className={styles.resultCompact}>
-              <div className={styles.resultHeadlineSmall}>
+            <div className={gp.resultStrip}>
+              <div className={gp.resultKicker}>Round</div>
+              <div className={gp.resultTitle}>
                 {gs.roundEndReason === "correct"
-                  ? "Correct!"
+                  ? "Nailed it"
                   : gs.roundEndReason === "out_of_guesses"
                     ? "Out of guesses"
-                    : "Round over"}
+                    : "Time"}
               </div>
-              <div className={styles.resultLine}>
-                <strong>{gs.lastRoundWord}</strong> · {((gs.lastRoundTimeMs ?? 0) / 1000).toFixed(1)}s · {gs.lastRoundAttempts}{" "}
-                tries
+              <div className={gp.resultDetail}>
+                <strong>{gs.lastRoundWord}</strong> · {((gs.lastRoundTimeMs ?? 0) / 1000).toFixed(1)}s ·{" "}
+                {gs.lastRoundAttempts} tries
               </div>
-              <div className={styles.resultNextHint}>Both tap Next Round</div>
+              <div className={gp.resultDetail}>Both tap next round to continue</div>
               <RematchBar
                 iWantRematch={role === "host" ? gs.sessionRematch.host : role === "guest" ? gs.sessionRematch.guest : false}
                 theyWantRematch={role === "host" ? gs.sessionRematch.guest : role === "guest" ? gs.sessionRematch.host : false}
@@ -735,29 +787,29 @@ export default function LipReader() {
           ) : null}
 
           {!uiMenu && !matchmaking && opponentConnected ? (
-            <div className={styles.bottomDock}>
+            <div className={gp.surfaceDock}>
               {gs.phase === "lobby" ? (
                 <>
-                  <button type="button" className={styles.buttonSecondary} onClick={toggleLobbyReady}>
+                  <button type="button" className={gp.surfacePillGhost} onClick={toggleLobbyReady}>
                     {lobbyReadyLabel}
                   </button>
                   {role === "host" ? (
-                    <button type="button" className={styles.button} onClick={hostTryStartFromLobby} disabled={!canHostStart}>
-                      Start Game
+                    <button type="button" className={gp.surfacePill} onClick={hostTryStartFromLobby} disabled={!canHostStart}>
+                      Start round
                     </button>
                   ) : (
-                    <span className={styles.dockHint}>Wait for host…</span>
+                    <span className={gp.dockCaption}>Wait for host…</span>
                   )}
                 </>
               ) : null}
               {gs.phase === "round_result" ? (
-                <button type="button" className={styles.button} onClick={toggleNextReady}>
+                <button type="button" className={gp.surfacePill} onClick={toggleNextReady}>
                   {nextReadyLabel}
                 </button>
               ) : null}
               {gs.phase === "playing" && iAmGuesser ? (
-                <button type="button" className={styles.button} onClick={() => setGuessModalOpen(true)}>
-                  I Know It
+                <button type="button" className={gp.surfacePill} onClick={() => setGuessModalOpen(true)}>
+                  I know it
                 </button>
               ) : null}
             </div>
@@ -780,9 +832,11 @@ export default function LipReader() {
       ) : null}
 
       {guessModalOpen ? (
-        <div className={styles.overlay} role="dialog" aria-modal="true">
-          <div className={styles.card}>
-            <div className={styles.modalTitle}>What&apos;s the word?</div>
+        <div className={gp.fullOverlay} role="dialog" aria-modal="true">
+          <div className={gp.glassPanel}>
+            <div className={gp.resultTitle} style={{ fontSize: "18px", marginBottom: "12px" }}>
+              What&apos;s the word?
+            </div>
             <input
               className={styles.input}
               value={guessInput}
@@ -791,13 +845,13 @@ export default function LipReader() {
               autoFocus
               maxLength={48}
             />
-            <div className={styles.actionsRow}>
-              <button type="button" className={styles.button} onClick={submitGuess}>
-                Submit Guess
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "14px", flexWrap: "wrap" }}>
+              <button type="button" className={gp.surfacePill} onClick={submitGuess}>
+                Submit
               </button>
               <button
                 type="button"
-                className={styles.buttonSecondary}
+                className={gp.surfacePillGhost}
                 onClick={() => {
                   setGuessModalOpen(false);
                   setGuessInput("");
@@ -811,27 +865,35 @@ export default function LipReader() {
       ) : null}
 
       {uiMenu || matchmaking ? (
-        <div className={styles.overlay}>
-          <div className={styles.card}>
-            <div className={styles.cardTitle}>Charades</div>
-            <p className={styles.menuHint}>Playing as @{profile.username}</p>
+        <div className={gp.fullOverlay}>
+          <div className={gp.glassPanel}>
+            <div className={gp.stinger} style={{ fontSize: "clamp(22px, 6vw, 28px)", marginBottom: "8px" }}>
+              Charades
+            </div>
+            <p className={gp.resultDetail}>Playing as @{profile.username}</p>
             {matchmaking ? (
               <>
-                <button type="button" className={styles.buttonSecondary} onClick={cancelMatchmaking}>
+                <button type="button" className={gp.surfacePillGhost} style={{ marginTop: "16px", width: "100%" }} onClick={cancelMatchmaking}>
                   Cancel
                 </button>
-                <div className={styles.status}>{status}</div>
+                <div className={gp.resultDetail} style={{ marginTop: "12px", textAlign: "center" }}>
+                  {status}
+                </div>
               </>
             ) : (
               <>
-                <button type="button" className={styles.button} onClick={() => void findMatch()}>
-                  Find Match
+                <button type="button" className={gp.surfacePill} style={{ marginTop: "16px", width: "100%" }} onClick={() => void findMatch()}>
+                  Find match
                 </button>
-                <div className={styles.status}>{status}</div>
+                <div className={gp.resultDetail} style={{ marginTop: "12px", textAlign: "center" }}>
+                  {status}
+                </div>
               </>
             )}
             {micOk === false ? (
-              <div className={styles.status}>Enable microphone so your opponent can hear you when you guess.</div>
+              <div className={gp.resultDetail} style={{ marginTop: "10px", textAlign: "center" }}>
+                Enable the microphone so your opponent can hear guesses.
+              </div>
             ) : null}
           </div>
         </div>

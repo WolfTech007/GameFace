@@ -1,7 +1,5 @@
-"use client";
+import { GameIntro } from "@/components/gameface/GameIntro";
 
-import StaringContest from "@/components/StaringContest";
-
-export default function StaringContestPage() {
-  return <StaringContest />;
+export default function StaringContestIntroPage() {
+  return <GameIntro slug="staring-contest" />;
 }

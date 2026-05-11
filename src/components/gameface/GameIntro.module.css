@@ -1,0 +1,110 @@
+.shell {
+  position: relative;
+  min-height: 100svh;
+  background: var(--gf-bg-0);
+  color: var(--gf-text);
+}
+
+.shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -10%, rgba(56, 189, 248, 0.16), transparent 52%),
+    radial-gradient(ellipse 70% 45% at 100% 80%, rgba(251, 113, 133, 0.09), transparent 48%),
+    linear-gradient(180deg, var(--gf-bg-1) 0%, var(--gf-bg-0) 55%);
+  z-index: 0;
+}
+
+.main {
+  position: relative;
+  z-index: 1;
+  max-width: min(var(--gf-max-content), 100%);
+  margin: 0 auto;
+  padding: calc(var(--safe-top) + 16px) calc(var(--safe-left) + 18px) calc(var(--safe-bottom) + 88px)
+    calc(var(--safe-right) + 18px);
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 20px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--gf-you);
+  text-decoration: none;
+  opacity: 0.92;
+}
+
+.back:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.thumbPlaceholder {
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 35%, rgba(255, 255, 255, 0.07), transparent),
+    linear-gradient(165deg, rgba(56, 189, 248, 0.06), rgba(251, 113, 133, 0.05));
+}
+
+.title {
+  margin: 4px 0 0;
+  font-size: clamp(26px, 7vw, 34px);
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.desc {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--gf-text-muted);
+  max-width: 38ch;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 22px;
+  border-radius: var(--gf-radius-md);
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #041018;
+  background: linear-gradient(180deg, #e0f2fe, var(--gf-you));
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.35),
+    0 12px 36px rgba(56, 189, 248, 0.22);
+  transition: transform var(--gf-duration-fast) var(--gf-ease-out), filter var(--gf-duration-fast)
+    var(--gf-ease-out);
+}
+
+.primary:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.secondary {
+  width: 100%;
+}

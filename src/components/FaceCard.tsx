@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useRouter } from "next/navigation";
 import styles from "./FaceCard.module.css";
 import {
   connectGuestToHost,
@@ -19,6 +20,8 @@ import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
+import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 type Phase = "intro" | "queue" | "peer_setup" | "lobby" | "playing" | "ended";
 
@@ -74,7 +77,18 @@ type EndPayload =
   | { kind: "lost"; youWere: string }
   | { kind: "draw"; hostCard: string; guestCard: string; durationSec: number };
 
-export default function FaceCard() {
+export type FaceCardProps = {
+  autoJoinPublicQueue?: boolean;
+  fromRandomMatch?: boolean;
+  introHref?: string;
+};
+
+export default function FaceCard({
+  autoJoinPublicQueue = false,
+  fromRandomMatch: _fromRandomMatch = false,
+  introHref,
+}: FaceCardProps) {
+  const router = useRouter();
   const { profile } = useGameFaceProfile();
   const clientId = profile.userId;
 
@@ -83,7 +97,7 @@ export default function FaceCard() {
   const localOverlayRef = useRef<HTMLCanvasElement | null>(null);
   const remoteOverlayRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [phase, setPhase] = useState<Phase>("intro");
+  const [phase, setPhase] = useState<Phase>(() => (autoJoinPublicQueue ? "queue" : "intro"));
   const phaseRef = useRef<Phase>("intro");
   useEffect(() => {
     phaseRef.current = phase;
@@ -401,6 +415,7 @@ export default function FaceCard() {
 
   function returnToArcade() {
     leaveMatch();
+    if (introHref) router.push(introHref);
   }
 
   function wireHost(conn: any) {
@@ -613,6 +628,12 @@ export default function FaceCard() {
   useConsumePendingMatch("facecard", (p) => {
     void applyMatch(p.peerRoomId, p.role, "");
   });
+
+  useEffect(() => {
+    if (!autoJoinPublicQueue) return;
+    void findMatch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot queue join from GameIntro
+  }, [autoJoinPublicQueue]);
 
   function toggleReady() {
     const next = !localReady;
@@ -827,160 +848,167 @@ export default function FaceCard() {
       ) : null}
 
       {showGame ? (
-        <div className={styles.gameWrap}>
-          <div className={styles.splitTop}>
+        <div className={gp.surfaceRoot}>
+          <div className={gp.surfaceVignette} aria-hidden />
+          <GameplayDuelHud
+            gameBadge="Face Card"
+            opponent={{
+              variant: "opponent",
+              displayName: displayRemoteName,
+              online: true,
+              stat: phase === "playing" ? `${theirLeft} guesses` : undefined,
+            }}
+            you={{
+              variant: "you",
+              displayName: displayLocalName,
+              handle: `@${profile.username}`,
+              level: profile.level,
+              stat: phase === "playing" ? `${myLeft} guesses` : undefined,
+              online: true,
+            }}
+          />
+        <div className={gp.surfaceMain}>
+          <div className={gp.surfaceStage}>
+          <div className={gp.surfaceSplit}>
+          <div className={`${gp.surfacePane} ${gp.surfacePaneOpponent}`}>
             <video
               ref={remoteVideoRef}
-              className={`${styles.video} ${styles.videoRemote}`}
+              className={`${gp.surfaceFeed} ${styles.video} ${styles.videoRemote}`}
               playsInline
               autoPlay
             />
             <canvas ref={remoteOverlayRef} className={styles.overlayCanvas} aria-hidden />
-            <div className={styles.nameTag}>{displayRemoteName}</div>
           </div>
 
-          <div className={styles.divider} />
-
-          <div className={styles.splitBottom}>
-            <video
-              ref={localVideoRef}
-              className={`${styles.video} ${styles.videoLocal}`}
-              playsInline
-              muted
-              autoPlay
-            />
-            <canvas ref={localOverlayRef} className={styles.overlayCanvas} aria-hidden />
-            <div className={styles.nameTag}>{displayLocalName}</div>
-
             {phase === "playing" ? (
-              <div className={styles.timerPill}>{timerSec.toFixed(2)}s</div>
-            ) : null}
-
-            {phase === "playing" ? (
-              <div className={styles.guessPill}>
-                Guesses: {myLeft}/3
-                <span className={styles.guessSub}> · Them: {theirLeft}/3</span>
+              <div className={gp.surfaceCenterHud}>
+                <span className={gp.surfaceCenterMuted}>Clock</span>
+                <span className={gp.surfaceCenterTimer}>{timerSec.toFixed(2)}s</span>
+                <span className={gp.surfaceCenterMuted}>
+                  You {myLeft}/3 · Them {theirLeft}/3
+                </span>
               </div>
             ) : null}
 
-            {outOfGuesses ? <div className={styles.outBanner}>Out of guesses</div> : null}
+            <div className={`${gp.surfacePane} ${gp.surfacePaneYou}`}>
+              <video
+                ref={localVideoRef}
+                className={`${gp.surfaceFeed} ${gp.surfaceFeedMirror} ${styles.video} ${styles.videoLocal}`}
+                playsInline
+                muted
+                autoPlay
+              />
+              <canvas ref={localOverlayRef} className={styles.overlayCanvas} aria-hidden />
 
-            {toast ? <div className={styles.toast}>{toast}</div> : null}
+              {phase === "playing" ? (
+                <div className={gp.turnRibbon}>
+                  {myLeft > 0 ? "Your turn · ask questions or guess" : "Their turn · listen in"}
+                </div>
+              ) : null}
 
-            {phase === "lobby" ? (
-              <div className={styles.overlayCard}>
-                <div className={styles.card}>
-                  <div className={styles.cardTitle}>Opponent found.</div>
-                  <div className={styles.cardBody}>Tap Ready when you&apos;re set.</div>
-                  <button type="button" className={styles.primaryBtn} onClick={toggleReady}>
-                    {localReady ? "Cancel Ready" : "Ready"}
-                  </button>
-                  <div className={styles.cardBody}>
-                    Opponent: {remoteReady ? "Ready ✓" : "Not ready yet"}
-                  </div>
-                  {role === "host" ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryBtn}
-                      onClick={hostStartGame}
-                      disabled={!canHostStart}
-                    >
-                      Start Game
+              {outOfGuesses ? <div className={gp.riskRibbon}>Out of guesses</div> : null}
+
+              {toast ? <div className={styles.toast}>{toast}</div> : null}
+
+              {phase === "lobby" ? (
+                <div className={gp.floatingGlass}>
+                  <div className={gp.glassPanel}>
+                    <div className={gp.resultKicker}>Lobby</div>
+                    <div className={gp.resultTitle}>Opponent locked in</div>
+                    <div className={gp.resultDetail}>Tap ready when your camera is stable.</div>
+                    <button type="button" className={gp.surfacePill} style={{ marginTop: "14px", width: "100%" }} onClick={toggleReady}>
+                      {localReady ? "Cancel ready" : "Ready"}
                     </button>
-                  ) : (
-                    <div className={styles.cardBodyMuted}>
-                      {localReady && remoteReady
-                        ? "Waiting for host to start…"
-                        : "Both players must tap Ready."}
+                    <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
+                      Them: {remoteReady ? "Ready ✓" : "Waiting"}
                     </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-
-            {phase === "playing" && myLeft > 0 ? (
-              <button
-                type="button"
-                className={styles.iknowBtn}
-                onClick={() => setGuessModalOpen(true)}
-              >
-                I Know It
-              </button>
-            ) : null}
-
-            {guessModalOpen ? (
-              <div
-                className={styles.modalBackdrop}
-                role="presentation"
-                onClick={() => setGuessModalOpen(false)}
-              >
-                <div
-                  className={styles.modalCard}
-                  role="dialog"
-                  aria-labelledby="guess-title"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div id="guess-title" className={styles.modalTitle}>
-                    Who are you?
-                  </div>
-                  <input
-                    className={styles.modalInput}
-                    value={guessInput}
-                    onChange={(e) => setGuessInput(e.target.value)}
-                    placeholder="Your guess"
-                    autoComplete="off"
-                  />
-                  <div className={styles.modalRow}>
-                    <button type="button" className={styles.secondaryBtn} onClick={() => setGuessModalOpen(false)}>
-                      Cancel
-                    </button>
-                    <button type="button" className={styles.primaryBtn} onClick={submitGuess}>
-                      Submit Guess
-                    </button>
+                    {role === "host" ? (
+                      <button
+                        type="button"
+                        className={gp.surfacePillGhost}
+                        style={{ marginTop: "12px", width: "100%" }}
+                        onClick={hostStartGame}
+                        disabled={!canHostStart}
+                      >
+                        Start game
+                      </button>
+                    ) : (
+                      <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
+                        {localReady && remoteReady ? "Waiting for host…" : "Both players ready up."}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {phase === "ended" && endPayload ? (
-              <div className={styles.overlayCard}>
-                <div className={styles.card}>
-                  {endPayload.kind === "won" ? (
-                    <>
-                      <div className={`${styles.cardTitle} ${styles.win}`}>You Win!</div>
-                      <div className={styles.cardBody}>You were: {endPayload.youWere}</div>
-                      <div className={styles.cardBody}>
-                        Time: {endPayload.durationSec.toFixed(2)}s
-                      </div>
-                      <div className={styles.cardBody}>
-                        Guesses Used: {endPayload.guessesUsed}/3
-                      </div>
-                    </>
-                  ) : endPayload.kind === "lost" ? (
-                    <>
-                      <div className={`${styles.cardTitle} ${styles.lose}`}>You Lost</div>
-                      <div className={styles.cardBody}>Opponent guessed first.</div>
-                      <div className={styles.cardBody}>You were: {endPayload.youWere}</div>
-                    </>
-                  ) : (
-                    <>
-                      <div className={styles.cardTitle}>Nobody cooked. Game Over.</div>
-                      <div className={styles.cardBody}>Names: {endPayload.hostCard}</div>
-                      <div className={styles.cardBody}>and {endPayload.guestCard}</div>
-                      <div className={styles.cardBody}>Time: {endPayload.durationSec.toFixed(2)}s</div>
-                    </>
-                  )}
-                  <RematchBar
-                    iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
-                    theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
-                    onRematch={requestRematch}
-                    onLeave={leaveMatch}
-                    opponentLeft={opponentLeftMatch}
-                    onReturnArcade={returnToArcade}
-                  />
+              {phase === "playing" && myLeft > 0 ? (
+                <div className={gp.surfaceDock}>
+                  <button type="button" className={gp.surfacePill} onClick={() => setGuessModalOpen(true)}>
+                    Make a guess
+                  </button>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+
+              {guessModalOpen ? (
+                <div className={gp.fullOverlay} role="presentation" onClick={() => setGuessModalOpen(false)}>
+                  <div className={gp.glassPanel} role="dialog" aria-labelledby="guess-title" onClick={(e) => e.stopPropagation()}>
+                    <div id="guess-title" className={gp.resultTitle} style={{ fontSize: "18px", marginBottom: "12px" }}>
+                      Who are you?
+                    </div>
+                    <input className={styles.modalInput} value={guessInput} onChange={(e) => setGuessInput(e.target.value)} placeholder="Your guess" autoComplete="off" />
+                    <div style={{ display: "flex", gap: "10px", marginTop: "14px", justifyContent: "center", flexWrap: "wrap" }}>
+                      <button type="button" className={gp.surfacePillGhost} onClick={() => setGuessModalOpen(false)}>
+                        Cancel
+                      </button>
+                      <button type="button" className={gp.surfacePill} onClick={submitGuess}>
+                        Submit
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {phase === "ended" && endPayload ? (
+                <div className={gp.floatingGlass}>
+                  <div className={gp.glassPanel}>
+                    {endPayload.kind === "won" ? (
+                      <>
+                        <div className={gp.resultKicker}>Victory</div>
+                        <div className={gp.resultTitle}>You cracked it</div>
+                        <div className={gp.resultDetail}>You were {endPayload.youWere}</div>
+                        <div className={gp.resultDetail}>
+                          {endPayload.durationSec.toFixed(2)}s · {endPayload.guessesUsed}/3 guesses
+                        </div>
+                      </>
+                    ) : endPayload.kind === "lost" ? (
+                      <>
+                        <div className={gp.resultKicker}>They got it</div>
+                        <div className={gp.resultTitle}>Too slow</div>
+                        <div className={gp.resultDetail}>You were {endPayload.youWere}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className={gp.resultTitle}>Draw</div>
+                        <div className={gp.resultDetail}>
+                          {endPayload.hostCard} · {endPayload.guestCard}
+                        </div>
+                        <div className={gp.resultDetail}>{endPayload.durationSec.toFixed(2)}s</div>
+                      </>
+                    )}
+                    <RematchBar
+                      iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
+                      theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
+                      onRematch={requestRematch}
+                      onLeave={leaveMatch}
+                      opponentLeft={opponentLeftMatch}
+                      onReturnArcade={returnToArcade}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          </div>
           </div>
         </div>
       ) : null}
