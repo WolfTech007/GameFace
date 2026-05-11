@@ -13,8 +13,8 @@ export const FH = {
   B_Y_MAX: 0.46,
   X_MIN: 0.08,
   X_MAX: 0.92,
-  PUCK_R: 0.018,
-  MALLET_R: 0.054,
+  PUCK_R: 0.036,
+  MALLET_R: 0.054 * 1.3,
   GOAL_HALF_W: 0.11,
   /** Puck center crosses into slot → goal */
   TOP_GOAL_Y: 0.032,
@@ -160,7 +160,10 @@ export function hostMalletFromNose(nx: number, ny: number): { x: number; y: numb
 export function guestMalletFromNoseVisual(nx: number, ny: number): { x: number; y: number } {
   const xv = clamp(1 - nx, 0, 1);
   const x = clamp(xv, FH.X_MIN, FH.X_MAX);
-  /** Same nose-down → +y toward center line for Player B’s half. */
-  const y = clamp(FH.B_Y_MIN + ny * (FH.B_Y_MAX - FH.B_Y_MIN), FH.B_Y_MIN, FH.B_Y_MAX);
+  /**
+   * Align with Player A: nose lower in selfie (larger ny) → canonical +y (mallet toward center).
+   * Player B’s overlay is CSS-rotated 180°; invert ny vs the naive linear map so vertical tracks nose.
+   */
+  const y = clamp(FH.B_Y_MAX - ny * (FH.B_Y_MAX - FH.B_Y_MIN), FH.B_Y_MIN, FH.B_Y_MAX);
   return { x, y };
 }
