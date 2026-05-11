@@ -369,6 +369,17 @@ export default function StaringContest({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot queue join from GameIntro
   }, [autoJoinPublicQueue]);
 
+  async function cancelQueueSearch() {
+    if (pollTimerRef.current) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    await leaveQueue();
+    setStatus("");
+    setPhase("intro");
+    if (introHref) router.push(introHref);
+  }
+
   async function applyMatch(roomId: string, r: Role, opp: string) {
     setPeerRoomId(roomId);
     setRole(r);
@@ -798,7 +809,7 @@ export default function StaringContest({
 
   return (
     <div className={styles.root}>
-      {phase === "intro" || phase === "queue" ? (
+      {(phase === "intro" || phase === "queue") && !autoJoinPublicQueue ? (
         <div className={styles.intro}>
           <div className={styles.bigTitle}>Staring Contest</div>
           <div className={styles.tagline}>Don&apos;t blink.</div>
@@ -817,6 +828,23 @@ export default function StaringContest({
           </button>
 
           <div className={styles.statusText}>{status}</div>
+        </div>
+      ) : null}
+
+      {phase === "queue" && autoJoinPublicQueue ? (
+        <div className={gp.fullOverlay}>
+          <div className={gp.glassPanel}>
+            <p className={gp.resultKicker}>Staring contest</p>
+            <p className={gp.resultTitle} style={{ fontSize: "clamp(20px, 5vw, 26px)", marginTop: "6px" }}>
+              Finding a player…
+            </p>
+            <p className={gp.resultDetail} style={{ marginTop: "10px", textAlign: "center" }}>
+              {status || "Hang tight — we’ll drop you in as soon as someone is online."}
+            </p>
+            <button type="button" className={gp.surfacePillGhost} style={{ marginTop: "18px", width: "100%" }} onClick={() => void cancelQueueSearch()}>
+              Cancel
+            </button>
+          </div>
         </div>
       ) : null}
 

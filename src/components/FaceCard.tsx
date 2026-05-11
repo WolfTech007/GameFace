@@ -635,6 +635,17 @@ export default function FaceCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot queue join from GameIntro
   }, [autoJoinPublicQueue]);
 
+  async function cancelQueueSearch() {
+    if (pollTimerRef.current) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    await leaveQueue();
+    setStatus("");
+    setPhase("intro");
+    if (introHref) router.push(introHref);
+  }
+
   function toggleReady() {
     const next = !localReady;
     setLocalReady(next);
@@ -808,7 +819,8 @@ export default function FaceCard({
   const displayLocalName = profile.displayName.trim() || "You";
   const displayRemoteName = opponentName || "Opponent";
 
-  const showIntro = phase === "intro" || phase === "queue";
+  /** Intro with Find Match — only when not entering from GameIntro (?queue=1). */
+  const showLegacyIntro = (phase === "intro" || phase === "queue") && !autoJoinPublicQueue;
   const showGame =
     phase === "peer_setup" ||
     phase === "lobby" ||
@@ -825,7 +837,7 @@ export default function FaceCard({
 
   return (
     <div className={styles.root}>
-      {showIntro ? (
+      {showLegacyIntro ? (
         <div className={styles.intro}>
           <div className={styles.bigTitle}>FaceCard</div>
           <div className={styles.tagline}>Guess who you are.</div>
@@ -844,6 +856,23 @@ export default function FaceCard({
           </button>
 
           <div className={styles.statusText}>{status}</div>
+        </div>
+      ) : null}
+
+      {phase === "queue" && autoJoinPublicQueue ? (
+        <div className={gp.fullOverlay}>
+          <div className={gp.glassPanel}>
+            <p className={gp.resultKicker}>Face card</p>
+            <p className={gp.resultTitle} style={{ fontSize: "clamp(20px, 5vw, 26px)", marginTop: "6px" }}>
+              Finding a player…
+            </p>
+            <p className={gp.resultDetail} style={{ marginTop: "10px", textAlign: "center" }}>
+              {status || "Hang tight — pairing you with the next available player."}
+            </p>
+            <button type="button" className={gp.surfacePillGhost} style={{ marginTop: "18px", width: "100%" }} onClick={() => void cancelQueueSearch()}>
+              Cancel
+            </button>
+          </div>
         </div>
       ) : null}
 
