@@ -4,6 +4,74 @@
   min-height: 100svh;
 }
 
+/** Hero branding lockup — GAME / FACE split for instant recognition */
+.lockup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0 10px;
+  margin: 0 auto 8px;
+  font-size: clamp(36px, 12vw, 52px);
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-align: center;
+}
+
+.logoWord {
+  background: linear-gradient(180deg, #f8fafc 0%, #bae6fd 45%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 42px rgba(56, 189, 248, 0.45);
+}
+
+.logoFace {
+  background: linear-gradient(180deg, #fef3c7 0%, #fde68a 40%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 28px rgba(251, 191, 36, 0.35));
+}
+
+.tagline {
+  margin: 0 0 20px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--gf-text-muted);
+}
+
+.loginLink {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gf-you);
+  text-decoration: none;
+  opacity: 0.92;
+}
+
+.loginLink:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.rankBadge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0f172a;
+  background: linear-gradient(90deg, #fde68a, #fbbf24);
+}
+
+.level {
+  font-weight: 650;
+}
+
 .main {
   max-width: min(var(--gf-max-content), 100%);
   margin: 0 auto;

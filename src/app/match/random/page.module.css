@@ -1,0 +1,86 @@
+.root {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--safe-top) + 24px) 20px calc(var(--safe-bottom) + 24px);
+  position: relative;
+  overflow: hidden;
+}
+
+.glow {
+  position: absolute;
+  inset: -40%;
+  background: radial-gradient(circle at 50% 40%, rgba(56, 189, 248, 0.12), transparent 55%);
+  pointer-events: none;
+}
+
+.card {
+  position: relative;
+  width: min(400px, 100%);
+  padding: 28px 22px;
+  border-radius: var(--gf-radius-lg);
+  background: rgba(10, 14, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 24px 80px rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+
+.brand {
+  margin: 0 0 16px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.38em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.matchFound {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  color: #86efac;
+  animation: pop 0.45s var(--gf-ease-out);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(22px, 5vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.sub {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--gf-text-muted);
+  line-height: 1.45;
+}
+
+.spinner {
+  margin: 28px auto 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--gf-you);
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

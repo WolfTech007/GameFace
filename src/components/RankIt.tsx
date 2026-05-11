@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./RankIt.module.css";
 import {
   connectGuestToHost,
@@ -22,6 +22,7 @@ import { computeRankSimilarity, isValidTuple5Order } from "@/lib/rankitScore";
 import { POP_CULTURE_DEBATES, shuffleMatchDeckOrder } from "@/lib/rankitPrompts";
 import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
+import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 
 const QUEUE_POLL_MS = 600;
 
@@ -51,17 +52,6 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
   throw lastErr instanceof Error ? lastErr : new Error("Could not connect to opponent.");
 }
 
-function makeClientId() {
-  if (typeof window === "undefined") return crypto.randomUUID();
-  const k = "facearcade-ri-id";
-  let id = window.sessionStorage.getItem(k);
-  if (!id) {
-    id = crypto.randomUUID();
-    window.sessionStorage.setItem(k, id);
-  }
-  return id;
-}
-
 function clampName(name: string) {
   const t = name.trim().slice(0, 24);
   return t || "Player";
@@ -77,14 +67,14 @@ function deckEntryToPayload(pi: number): RankItPromptPayload {
 }
 
 export default function RankIt() {
-  const clientId = useMemo(() => makeClientId(), []);
+  const { profile } = useGameFaceProfile();
+  const clientId = profile.userId;
 
   const [flowPhase, setFlowPhase] = useState<FlowPhase>("intro");
-  const [name, setName] = useState("");
   const nameRef = useRef("");
   useEffect(() => {
-    nameRef.current = name.trim();
-  }, [name]);
+    nameRef.current = profile.displayName.trim();
+  }, [profile.displayName]);
 
   const [status, setStatus] = useState("");
   const [gameState, setGameState] = useState<RankItSharedState | null>(null);
@@ -390,12 +380,6 @@ export default function RankIt() {
   }
 
   async function findMatch() {
-    const trimmed = name.trim().slice(0, 24);
-    if (!trimmed) {
-      setStatus("Enter your name first.");
-      return;
-    }
-    setName(trimmed);
     setFlowPhase("matchmaking");
     setStatus("Finding a stranger…");
 
@@ -540,17 +524,8 @@ export default function RankIt() {
         <div className={styles.intro}>
           <div className={styles.bigTitle}>Rank It</div>
           <div className={styles.tagline}>Rank. Reveal. Argue.</div>
-          <div className={styles.field}>
-            <div className={styles.label}>Your name</div>
-            <input
-              className={styles.nameInput}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nickname"
-              maxLength={24}
-              autoCapitalize="words"
-              autoComplete="nickname"
-            />
+          <div className={styles.menuHint}>
+            Playing as <strong>{clampName(profile.displayName)}</strong>
           </div>
           {matchmaking ? (
             <>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 import styles from "./FacePong.module.css";
 import {
   connectGuestToHost,
@@ -13,6 +13,8 @@ import {
 import { createNoseTracker } from "@/lib/faceTracking";
 import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
+import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 
 const QUEUE_POLL_MS = 600;
 
@@ -28,17 +30,6 @@ function clamp(v: number, lo: number, hi: number) {
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
-}
-
-function makeClientId() {
-  if (typeof window === "undefined") return crypto.randomUUID();
-  const k = "facearcade-fp-id";
-  let id = window.sessionStorage.getItem(k);
-  if (!id) {
-    id = crypto.randomUUID();
-    window.sessionStorage.setItem(k, id);
-  }
-  return id;
 }
 
 function sleep(ms: number) {
@@ -103,7 +94,8 @@ const PADDLE_WORLD_Y_TOP = 0.08;
 const PADDLE_WORLD_Y_BOT = 0.92;
 
 export default function FacePong() {
-  const clientId = useMemo(() => makeClientId(), []);
+  const { profile } = useGameFaceProfile();
+  const clientId = profile.userId;
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -664,6 +656,10 @@ export default function FacePong() {
       setUiPhase("menu");
     }
   }
+
+  useConsumePendingMatch("facepong", (p) => {
+    void applyMatch(p.peerRoomId, p.role);
+  });
 
   async function findMatch() {
     if (matchPollRef.current) {

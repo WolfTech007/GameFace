@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 import styles from "./LipReader.module.css";
 import {
   connectGuestToHost,
@@ -21,23 +21,14 @@ import {
 import { guessMatchesSecret } from "@/lib/lipreaderGuess";
 import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
+import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 
 const QUEUE_POLL_MS = 600;
 /** Set true locally to verify round/guess sync; keep false in production. */
 const LIP_READER_UI_DEBUG = false;
 
 type Role = "host" | "guest";
-
-function makeClientId() {
-  if (typeof window === "undefined") return crypto.randomUUID();
-  const k = "facearcade-lr-id";
-  let id = window.sessionStorage.getItem(k);
-  if (!id) {
-    id = crypto.randomUUID();
-    window.sessionStorage.setItem(k, id);
-  }
-  return id;
-}
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -63,18 +54,18 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
 }
 
 export default function LipReader() {
-  const clientId = useMemo(() => makeClientId(), []);
+  const { profile } = useGameFaceProfile();
+  const clientId = profile.userId;
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const [uiMenu, setUiMenu] = useState(true);
   const [matchmaking, setMatchmaking] = useState(false);
-  const [name, setName] = useState("");
-  const nameRef = useRef("");
+  const nameRef = useRef(profile.displayName.trim().slice(0, 24) || "Player");
   useEffect(() => {
-    nameRef.current = name.trim();
-  }, [name]);
+    nameRef.current = profile.displayName.trim().slice(0, 24) || "Player";
+  }, [profile.displayName]);
 
   const [status, setStatus] = useState("");
   const [role, setRole] = useState<Role | null>(null);
@@ -548,13 +539,11 @@ export default function LipReader() {
     }
   }
 
+  useConsumePendingMatch("charades", (p) => {
+    void applyMatch(p.peerRoomId, p.role);
+  });
+
   async function findMatch() {
-    const trimmed = name.trim().slice(0, 24);
-    if (!trimmed) {
-      setStatus("Enter your name first.");
-      return;
-    }
-    setName(trimmed);
     setMatchmaking(true);
     setStatus("Searching…");
 
@@ -652,7 +641,7 @@ export default function LipReader() {
     if (role === "host" && gs.phase === "lobby") {
       gameStateRef.current.hostName = nameRef.current.slice(0, 24);
     }
-  }, [name, role, gs.phase]);
+  }, [profile.displayName, role, gs.phase]);
 
   useEffect(() => {
     return () => {
@@ -673,9 +662,9 @@ export default function LipReader() {
     <main className={styles.root}>
       <div className={styles.gameColumn}>
         <div className={styles.topBar}>
-          <span className={styles.topBarTitle}>Lip Reader</span>
+          <span className={styles.topBarTitle}>CHARADES</span>
           <span className={styles.topBarSep}>·</span>
-          <span className={styles.topBarSub}>Guess the muted word</span>
+          <span className={styles.topBarSub}>Act it out · guess the word</span>
         </div>
 
         <div className={styles.frame}>
@@ -824,16 +813,8 @@ export default function LipReader() {
       {uiMenu || matchmaking ? (
         <div className={styles.overlay}>
           <div className={styles.card}>
-            <div className={styles.cardTitle}>Lip Reader</div>
-            <div className={styles.field}>
-              <input
-                className={styles.input}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                maxLength={24}
-              />
-            </div>
+            <div className={styles.cardTitle}>Charades</div>
+            <p className={styles.menuHint}>Playing as @{profile.username}</p>
             {matchmaking ? (
               <>
                 <button type="button" className={styles.buttonSecondary} onClick={cancelMatchmaking}>

@@ -49,6 +49,13 @@
   opacity: 0.78;
 }
 
+.menuHint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.62);
+  text-align: center;
+}
+
 .frame {
   flex: 1;
   min-height: 0;

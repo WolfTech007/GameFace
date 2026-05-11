@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 import styles from "./FaceHockey.module.css";
 import {
   connectGuestToHost,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/facehockeyPhysics";
 import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
+import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 
 const QUEUE_POLL_MS = 600;
 const WIN_SCORE = 3;
@@ -75,17 +76,6 @@ function resetPuckAntiStuck(scratch: FaceHockeyAntiStuckScratch) {
   scratch.lastCornerKey = "";
 }
 
-function makeClientId() {
-  if (typeof window === "undefined") return crypto.randomUUID();
-  const k = "facearcade-fh-id";
-  let id = window.sessionStorage.getItem(k);
-  if (!id) {
-    id = crypto.randomUUID();
-    window.sessionStorage.setItem(k, id);
-  }
-  return id;
-}
-
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
@@ -114,7 +104,8 @@ function nowMs() {
 }
 
 export default function FaceHockey() {
-  const clientId = useMemo(() => makeClientId(), []);
+  const { profile } = useGameFaceProfile();
+  const clientId = profile.userId;
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);

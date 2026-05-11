@@ -7,9 +7,9 @@ type NavItem = { href: string; label: string; icon: string };
 
 const items: NavItem[] = [
   { href: "/", label: "Games", icon: "◇" },
-  { href: "#friends", label: "Friends", icon: "◎" },
-  { href: "#activity", label: "Activity", icon: "≋" },
-  { href: "#profile", label: "Profile", icon: "○" },
+  { href: "/friends", label: "Friends", icon: "◎" },
+  { href: "/activity", label: "Activity", icon: "≋" },
+  { href: "/profile", label: "Profile", icon: "○" },
 ];
 
 export function GFBottomNav({ activeHref = "/" }: { activeHref?: string }) {

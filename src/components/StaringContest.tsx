@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./StaringContest.module.css";
 import {
   connectGuestToHost,
@@ -19,6 +19,8 @@ import {
 import type { StaringNetMsg } from "@/lib/staringContestProtocol";
 import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/rematchSync";
+import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 
 type Phase =
   | "intro"
@@ -82,19 +84,9 @@ function median(nums: number[]) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-function makeClientId() {
-  if (typeof window === "undefined") return crypto.randomUUID();
-  const k = "facearcade-sc-id";
-  let id = window.sessionStorage.getItem(k);
-  if (!id) {
-    id = crypto.randomUUID();
-    window.sessionStorage.setItem(k, id);
-  }
-  return id;
-}
-
 export default function StaringContest() {
-  const clientId = useMemo(() => makeClientId(), []);
+  const { profile } = useGameFaceProfile();
+  const clientId = profile.userId;
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -116,11 +108,10 @@ export default function StaringContest() {
     phaseRef.current = phase;
   }, [phase]);
 
-  const [name, setName] = useState("");
-  const nameRef = useRef("");
+  const nameRef = useRef(profile.displayName.trim().slice(0, 24) || "Player");
   useEffect(() => {
-    nameRef.current = name.trim();
-  }, [name]);
+    nameRef.current = profile.displayName.trim().slice(0, 24) || "Player";
+  }, [profile.displayName]);
 
   const [status, setStatus] = useState("");
   const [opponentName, setOpponentName] = useState<string | null>(null);
@@ -332,12 +323,7 @@ export default function StaringContest() {
   }
 
   async function findMatch() {
-    const trimmed = name.trim().slice(0, 24);
-    if (!trimmed) {
-      setStatus("Enter your name first.");
-      return;
-    }
-    setName(trimmed);
+    const trimmed = profile.displayName.trim().slice(0, 24) || "Player";
     setPhase("queue");
     setStatus("Finding a stranger…");
 
@@ -374,6 +360,10 @@ export default function StaringContest() {
     setPhase("lobby");
     setLobbyEpoch((e) => e + 1);
   }
+
+  useConsumePendingMatch("staring", (p) => {
+    void applyMatch(p.peerRoomId, p.role, "");
+  });
 
   function resolveLoss(fromHost: boolean) {
     if (gameEndedRef.current) return;
@@ -775,7 +765,7 @@ export default function StaringContest() {
     sendNet({ t: "ready", ready: next });
   }
 
-  const displayLocalName = name.trim() || "You";
+  const displayLocalName = profile.displayName.trim() || "You";
   const displayRemoteName = opponentName || "Opponent";
 
   const showGameChrome =
@@ -792,16 +782,8 @@ export default function StaringContest() {
           <div className={styles.bigTitle}>Staring Contest</div>
           <div className={styles.tagline}>Don&apos;t blink.</div>
 
-          <div className={styles.field}>
-            <div className={styles.label}>Your name</div>
-            <input
-              className={styles.nameInput}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Type your name"
-              maxLength={24}
-              autoComplete="nickname"
-            />
+          <div className={styles.menuHint}>
+            Playing as <strong>{displayLocalName}</strong>
           </div>
 
           <button

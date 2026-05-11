@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import React, { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import styles from "./FaceCard.module.css";
 import {
   connectGuestToHost,
@@ -17,6 +17,8 @@ import { guessMatchesSecret } from "@/lib/facecardGuess";
 import type { FaceCardNetMsg } from "@/lib/facecardProtocol";
 import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/rematchSync";
+import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 
 type Phase = "intro" | "queue" | "peer_setup" | "lobby" | "playing" | "ended";
 
@@ -62,17 +64,6 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
   throw lastErr instanceof Error ? lastErr : new Error("Could not connect to opponent.");
 }
 
-function makeClientId() {
-  if (typeof window === "undefined") return crypto.randomUUID();
-  const k = "facearcade-fc-id";
-  let id = window.sessionStorage.getItem(k);
-  if (!id) {
-    id = crypto.randomUUID();
-    window.sessionStorage.setItem(k, id);
-  }
-  return id;
-}
-
 type EndPayload =
   | {
       kind: "won";
@@ -84,7 +75,8 @@ type EndPayload =
   | { kind: "draw"; hostCard: string; guestCard: string; durationSec: number };
 
 export default function FaceCard() {
-  const clientId = useMemo(() => makeClientId(), []);
+  const { profile } = useGameFaceProfile();
+  const clientId = profile.userId;
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -97,11 +89,10 @@ export default function FaceCard() {
     phaseRef.current = phase;
   }, [phase]);
 
-  const [name, setName] = useState("");
-  const nameRef = useRef("");
+  const nameRef = useRef(profile.displayName.trim().slice(0, 24) || "Player");
   useEffect(() => {
-    nameRef.current = name.trim();
-  }, [name]);
+    nameRef.current = profile.displayName.trim().slice(0, 24) || "Player";
+  }, [profile.displayName]);
 
   const [status, setStatus] = useState("");
   const [opponentName, setOpponentName] = useState<string | null>(null);
@@ -594,12 +585,6 @@ export default function FaceCard() {
   }
 
   async function findMatch() {
-    const trimmed = name.trim().slice(0, 24);
-    if (!trimmed) {
-      setStatus("Enter your name first.");
-      return;
-    }
-    setName(trimmed);
     setPhase("queue");
     setStatus("Finding a stranger…");
 
@@ -624,6 +609,10 @@ export default function FaceCard() {
       }
     }, QUEUE_POLL_MS);
   }
+
+  useConsumePendingMatch("facecard", (p) => {
+    void applyMatch(p.peerRoomId, p.role, "");
+  });
 
   function toggleReady() {
     const next = !localReady;
@@ -795,7 +784,7 @@ export default function FaceCard() {
     };
   }, []);
 
-  const displayLocalName = name.trim() || "You";
+  const displayLocalName = profile.displayName.trim() || "You";
   const displayRemoteName = opponentName || "Opponent";
 
   const showIntro = phase === "intro" || phase === "queue";
@@ -820,16 +809,8 @@ export default function FaceCard() {
           <div className={styles.bigTitle}>FaceCard</div>
           <div className={styles.tagline}>Guess who you are.</div>
 
-          <div className={styles.field}>
-            <div className={styles.label}>Your name</div>
-            <input
-              className={styles.nameInput}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Type your name"
-              maxLength={24}
-              autoComplete="nickname"
-            />
+          <div className={styles.menuHint}>
+            Playing as <strong>{displayLocalName}</strong>
           </div>
 
           <button

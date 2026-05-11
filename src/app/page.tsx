@@ -1,30 +1,13 @@
 import Link from "next/link";
 import { GFButton, GFGameCard, GFBottomNav } from "@/components/gameface";
+import { HomeTop } from "./HomeTop";
 import styles from "./page.module.css";
 
 export default function Page() {
   return (
     <div className={styles.shell}>
       <main className={styles.main}>
-        <header className={styles.topBar}>
-          <div className={styles.profile}>
-            <div className={styles.avatar} aria-hidden />
-            <div className={styles.profileText}>
-              <div className={styles.handle}>@you</div>
-              <div className={styles.levelRow}>
-                <span className={styles.level}>Level 1</span>
-                <span className={styles.dot} aria-hidden />
-                <span className={styles.online}>Online</span>
-              </div>
-            </div>
-          </div>
-          <div className={styles.topRight}>
-            <span className={styles.friendsOnline}>3 friends online</span>
-            <GFButton variant="ghost" className={styles.challengeBtn} disabled title="Coming soon">
-              Challenge
-            </GFButton>
-          </div>
-        </header>
+        <HomeTop />
 
         <section className={styles.hero} aria-labelledby="quick-match-heading">
           <p className={styles.eyebrow}>Quick start</p>
@@ -33,7 +16,7 @@ export default function Page() {
           </h1>
           <p className={styles.heroSub}>Pick how you want to play — faces stay center stage.</p>
           <div className={styles.heroActions}>
-            <Link href="/lipreader" className={styles.heroPrimary}>
+            <Link href="/match/random" className={styles.heroPrimary}>
               Random match
             </Link>
             <GFButton variant="ghost" className={styles.heroGhost} disabled title="Coming soon">
@@ -54,8 +37,8 @@ export default function Page() {
           </div>
 
           <GFGameCard
-            href="/lipreader"
-            title="Lip Reader"
+            href="/charades"
+            title="Charades"
             descriptor="Guess the muted word — fast, social, ridiculous."
             category="Most popular"
             accent="charades"
