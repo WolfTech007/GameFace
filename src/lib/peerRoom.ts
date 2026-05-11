@@ -16,10 +16,14 @@ export type HostToGuestMsg =
 
 export type GuestToHostMsg =
   | { t: "paddle"; x01: number }
-  | { t: "ready"; ready: boolean };
+  | { t: "ready"; ready: boolean }
+  | { t: "rematch"; want: boolean };
 
 export type FacePongNetState = {
   phase: "lobby" | "playing" | "gameover";
+  /** Increments when a rematch resets the session (ignore stale UI). */
+  matchEpoch: number;
+  rematch: { host: boolean; guest: boolean };
   rallyScore: number;
   ball: { x: number; y: number; vx: number; vy: number };
   paddles: { hostX: number; guestX: number };

@@ -24,6 +24,8 @@ import {
   hostMalletFromNoseInBounds,
   hostStepPhysics,
 } from "@/lib/facehockeyPhysics";
+import { RematchBar } from "@/components/RematchBar";
+import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 
 const QUEUE_POLL_MS = 600;
 const WIN_SCORE = 3;
@@ -36,17 +38,20 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+/**
+ * Mallet bounds in normalized arena coords (0–1, full canvas = rink).
+ * Y uses only center line ± mallet radius and 1 − radius — no WALL_INSET on mallets
+ * (that inset was the hidden “safe zone”; rail is drawn inside but mallet may reach wall).
+ */
 function getMalletBounds(canvas: HTMLCanvasElement | null) {
-  const wi = FH.WALL_INSET;
   const mr = FH.MALLET_R;
   const w = canvas?.width ?? 1;
   const h = canvas?.height ?? 1;
 
-  // Legal halves only — exact half-plane split at y = 0.5 (plus arena rail inset / mallet radius).
-  const aMinY = 0.5;
-  const aMaxY = 1 - wi - mr;
-  const bMinY = wi + mr;
-  const bMaxY = 0.5;
+  const aMinY = 0.5 + mr;
+  const aMaxY = 1 - mr;
+  const bMinY = mr;
+  const bMaxY = 0.5 - mr;
 
   const xMin = FH.X_MIN;
   const xMax = FH.X_MAX;
@@ -126,6 +131,7 @@ export default function FaceHockey() {
   const [role, setRole] = useState<Role | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [opponentConnected, setOpponentConnected] = useState(false);
+  const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
   const [micOk, setMicOk] = useState<boolean | null>(null);
 
   const roleRef = useRef<Role | null>(null);
@@ -356,6 +362,7 @@ export default function FaceHockey() {
 
     if (s.scoreA >= WIN_SCORE || s.scoreB >= WIN_SCORE) {
       s.phase = "gameover";
+      s.rematch = emptyRematchIntent();
       s.winner = s.scoreA >= WIN_SCORE ? "A" : "B";
       s.puckFrozen = true;
       resetPuckCenter(s);
@@ -420,6 +427,26 @@ export default function FaceHockey() {
     prevMalletBRef.current = { x: 0.5, y: 0.22 };
     resetPuckAntiStuck(puckAntiStuckRef.current);
     broadcastAuthoritativeState();
+  }
+
+  function hostRematchApplyBoth() {
+    if (roleRef.current !== "host") return;
+    const s = hostStateRef.current;
+    if (s.phase !== "gameover") return;
+    if (!rematchBothWant(s.rematch)) return;
+    const nextE = (s.matchEpoch ?? 0) + 1;
+    clearScheduledTimers();
+    hostStateRef.current = initialFaceHockeyState();
+    hostStateRef.current.matchEpoch = nextE;
+    hostStateRef.current.rematch = emptyRematchIntent();
+    rallyStartMsRef.current = null;
+    prevMalletARef.current = { x: 0.5, y: 0.78 };
+    prevMalletBRef.current = { x: 0.5, y: 0.22 };
+    resetPuckAntiStuck(puckAntiStuckRef.current);
+    setUiPhase("lobby");
+    setOpponentLeftMatch(false);
+    broadcastAuthoritativeState();
+    bumpView();
   }
 
   function hostTryStartWhenBothReady() {
@@ -583,6 +610,7 @@ export default function FaceHockey() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
+      noseSmooth: 0,
       onNoseXY: (x, y) => {
         localNoseRef.current = { x, y };
       },
@@ -627,10 +655,26 @@ export default function FaceHockey() {
         broadcastAuthoritativeState();
         bumpLobby();
         hostTryStartWhenBothReady();
+      } else if (msg.t === "fh_rematch") {
+        if (hostStateRef.current.phase === "gameover") {
+          hostStateRef.current.rematch.guest = msg.want;
+          broadcastAuthoritativeState();
+          bumpView();
+          hostRematchApplyBoth();
+        }
       } else if (msg.t === "fh_play_again") {
-        hostResetLobby();
-        setUiPhase("lobby");
+        if (hostStateRef.current.phase === "gameover") {
+          hostStateRef.current.rematch.guest = true;
+          broadcastAuthoritativeState();
+          bumpView();
+          hostRematchApplyBoth();
+        }
       }
+    });
+
+    conn.on("close", () => {
+      setOpponentConnected(false);
+      setOpponentLeftMatch(true);
     });
 
     conn.on("open", () => {
@@ -651,6 +695,7 @@ export default function FaceHockey() {
     const nose = await createNoseTracker();
     destroyRef.current = nose.start({
       videoEl: localVideoRef.current!,
+      noseSmooth: 0,
       onNoseXY: (x, y) => {
         localNoseRef.current = { x, y };
         const b = getMalletBounds(canvasRef.current);
@@ -695,8 +740,16 @@ export default function FaceHockey() {
         guestMalletRef.current = { ...hostStateRef.current.malletB };
         if (msg.state.phase === "playing") setUiPhase("playing");
         if (msg.state.phase === "gameover") setUiPhase("gameover");
-        if (msg.state.phase === "lobby") setUiPhase("lobby");
+        if (msg.state.phase === "lobby") {
+          setUiPhase("lobby");
+          setOpponentLeftMatch(false);
+        }
       }
+    });
+
+    conn.on("close", () => {
+      setOpponentConnected(false);
+      setOpponentLeftMatch(true);
     });
 
     const call = peer.call(rid, stream);
@@ -720,6 +773,7 @@ export default function FaceHockey() {
       } else {
         await connectAsGuest(peerRoomId);
       }
+      setOpponentLeftMatch(false);
       setUiPhase("lobby");
       setStatus("Opponent connected.");
     } catch {
@@ -765,13 +819,31 @@ export default function FaceHockey() {
     setStatus("");
   }
 
-  function playAgain() {
+  function leaveMatch() {
+    cleanup();
+    setUiPhase("menu");
+    setRole(null);
+    setRoomId(null);
+    setOpponentConnected(false);
+    setOpponentLeftMatch(false);
+    setStatus("");
+  }
+
+  function requestRematch() {
+    const s = hostStateRef.current;
+    if (s.phase !== "gameover") return;
     if (role === "host") {
-      hostResetLobby();
-      setUiPhase("lobby");
+      s.rematch.host = true;
+      broadcastAuthoritativeState();
+      bumpView();
+      hostRematchApplyBoth();
     } else {
-      sendToHost({ t: "fh_play_again" });
+      sendToHost({ t: "fh_rematch", want: true });
     }
+  }
+
+  function returnToArcade() {
+    leaveMatch();
   }
 
   useEffect(() => {
@@ -984,9 +1056,14 @@ export default function FaceHockey() {
               <div className={styles.sub}>
                 Score: {myScore} — {theirScore}
               </div>
-              <button type="button" className={styles.button} onClick={playAgain}>
-                Play Again
-              </button>
+              <RematchBar
+                iWantRematch={role === "host" ? gs.rematch.host : gs.rematch.guest}
+                theyWantRematch={role === "host" ? gs.rematch.guest : gs.rematch.host}
+                onRematch={requestRematch}
+                onLeave={leaveMatch}
+                opponentLeft={opponentLeftMatch}
+                onReturnArcade={returnToArcade}
+              />
             </div>
           </div>
         ) : null}

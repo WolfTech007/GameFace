@@ -9,6 +9,11 @@ export type NoseTracker = {
     onNoseXY?: (x01: number, y01: number) => void;
     isPaused?: () => boolean;
     mirrorSelfie?: boolean;
+    /**
+     * EMA blend toward raw landmark each frame (0–1). Use 0 for raw nose (e.g. FaceHockey mallet).
+     * Default matches historical FacePong smoothing.
+     */
+    noseSmooth?: number;
   }) => () => void;
 };
 
@@ -24,7 +29,7 @@ export async function createNoseTracker(): Promise<NoseTracker> {
   const landmarker = await createFaceLandmarker();
 
   return {
-    start({ videoEl, onNoseX, onNoseXY, isPaused, mirrorSelfie = true }) {
+    start({ videoEl, onNoseX, onNoseXY, isPaused, mirrorSelfie = true, noseSmooth = 0.42 }) {
       let raf: number | null = null;
       let lastDetectMs = 0;
       let smoothedX = 0.5;
@@ -43,8 +48,14 @@ export async function createNoseTracker(): Promise<NoseTracker> {
             if (nose) {
               const rawX = clamp(mirrorSelfie ? 1 - nose.x : nose.x, 0, 1);
               const rawY = clamp(mirrorSelfie ? nose.y : 1 - nose.y, 0, 1);
-              smoothedX = lerp(smoothedX, rawX, 0.42);
-              smoothedY = lerp(smoothedY, rawY, 0.42);
+              const a = clamp(noseSmooth, 0, 1);
+              if (a <= 0) {
+                smoothedX = rawX;
+                smoothedY = rawY;
+              } else {
+                smoothedX = lerp(smoothedX, rawX, a);
+                smoothedY = lerp(smoothedY, rawY, a);
+              }
               if (onNoseXY) onNoseXY(smoothedX, smoothedY);
               else onNoseX?.(smoothedX);
             }

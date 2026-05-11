@@ -32,6 +32,11 @@ export type LipReaderPhase = "lobby" | "countdown" | "playing" | "round_result";
 
 export type LipReaderNetState = {
   phase: LipReaderPhase;
+  /** Bump on full-session rematch from round_result. */
+  sessionEpoch: number;
+  sessionRematch: { host: boolean; guest: boolean };
+  /** Monotonic per round (incremented when entering countdown); stale guess messages ignored. */
+  roundId: number;
   hostName: string;
   guestName: string;
   /** True = host is communicator this round; false = guest is communicator. */
@@ -64,8 +69,9 @@ export type LipReaderNetState = {
 export type GuestToHostLipMsg =
   | { t: "lr_name"; name: string }
   | { t: "lr_ready_lobby"; ready: boolean }
-  | { t: "lr_guess"; text: string }
-  | { t: "lr_ready_next"; ready: boolean };
+  | { t: "lr_guess"; text: string; roundId: number }
+  | { t: "lr_ready_next"; ready: boolean }
+  | { t: "lr_rematch"; want: boolean };
 
 export type HostToGuestLipMsg = {
   t: "lr_state";
@@ -77,6 +83,9 @@ export type HostToGuestLipMsg = {
 export function initialLipReaderState(): LipReaderNetState {
   return {
     phase: "lobby",
+    sessionEpoch: 0,
+    sessionRematch: { host: false, guest: false },
+    roundId: 0,
     hostName: "",
     guestName: "",
     communicatorIsHost: true,
@@ -100,8 +109,12 @@ export function initialLipReaderState(): LipReaderNetState {
 }
 
 export function cloneLipReaderState(s: LipReaderNetState): LipReaderNetState {
+  const sr = s.sessionRematch ?? { host: false, guest: false };
   return {
     phase: s.phase,
+    sessionEpoch: s.sessionEpoch ?? 0,
+    sessionRematch: { ...sr },
+    roundId: s.roundId,
     hostName: s.hostName,
     guestName: s.guestName,
     communicatorIsHost: s.communicatorIsHost,

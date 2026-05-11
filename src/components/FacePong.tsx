@@ -11,6 +11,8 @@ import {
   type HostToGuestMsg,
 } from "@/lib/peerRoom";
 import { createNoseTracker } from "@/lib/faceTracking";
+import { RematchBar } from "@/components/RematchBar";
+import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 
 const QUEUE_POLL_MS = 600;
 
@@ -65,6 +67,8 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
 function makeInitialNetState(): FacePongNetState {
   return {
     phase: "lobby",
+    matchEpoch: 0,
+    rematch: emptyRematchIntent(),
     rallyScore: 0,
     ball: { x: 0.5, y: 0.5, vx: 0.0, vy: 0.0 },
     paddles: { hostX: 0.5, guestX: 0.5 },
@@ -74,8 +78,11 @@ function makeInitialNetState(): FacePongNetState {
 
 function cloneNetState(s: FacePongNetState): FacePongNetState {
   const r = s.ready ?? { host: false, guest: false };
+  const rm = s.rematch ?? emptyRematchIntent();
   return {
     phase: s.phase,
+    matchEpoch: s.matchEpoch ?? 0,
+    rematch: { ...rm },
     rallyScore: s.rallyScore,
     ball: { ...s.ball },
     paddles: { ...s.paddles },
@@ -114,6 +121,7 @@ export default function FacePong() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("Idle");
   const [opponentConnected, setOpponentConnected] = useState(false);
+  const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
   const [rallyScore, setRallyScore] = useState(0);
   const [micOk, setMicOk] = useState<boolean | null>(null);
 
@@ -267,6 +275,28 @@ export default function FacePong() {
     setRallyScore(0);
   }
 
+  /** Same room: new epoch, clear rematch flags, lobby + fresh ball/score. */
+  function hostApplyRematchReset() {
+    const nextEpoch = (hostStateRef.current.matchEpoch ?? 0) + 1;
+    hostStateRef.current = makeInitialNetState();
+    hostStateRef.current.matchEpoch = nextEpoch;
+    hostStateRef.current.rematch = emptyRematchIntent();
+    hostStartedAtRef.current = null;
+    setRallyScore(0);
+  }
+
+  function hostTryRematchFromGameOver() {
+    if (roleRef.current !== "host") return;
+    const s = hostStateRef.current;
+    if (s.phase !== "gameover") return;
+    if (!rematchBothWant(s.rematch)) return;
+    hostApplyRematchReset();
+    setUiPhase("lobby");
+    setOpponentLeftMatch(false);
+    broadcastAuthoritativeState();
+    bumpLobby();
+  }
+
   function hostTryStartWhenBothReady() {
     if (roleRef.current !== "host") return;
     const s = hostStateRef.current;
@@ -336,6 +366,7 @@ export default function FacePong() {
         s.rallyScore += 1;
       } else if (s.ball.y < 0) {
         s.phase = "gameover";
+        s.rematch = emptyRematchIntent();
       }
     }
 
@@ -350,6 +381,7 @@ export default function FacePong() {
         s.rallyScore += 1;
       } else if (s.ball.y > 1) {
         s.phase = "gameover";
+        s.rematch = emptyRematchIntent();
       }
     }
 
@@ -515,7 +547,19 @@ export default function FacePong() {
         broadcastAuthoritativeState();
         bumpLobby();
         hostTryStartWhenBothReady();
+      } else if (msg.t === "rematch") {
+        if (hostStateRef.current.phase === "gameover") {
+          hostStateRef.current.rematch.guest = msg.want;
+          broadcastAuthoritativeState();
+          bumpLobby();
+          hostTryRematchFromGameOver();
+        }
       }
+    });
+
+    conn.on("close", () => {
+      setOpponentConnected(false);
+      setOpponentLeftMatch(true);
     });
 
     conn.on("open", () => {
@@ -569,9 +613,17 @@ export default function FacePong() {
         setRallyScore(msg.state.rallyScore);
         if (msg.state.phase === "playing") setUiPhase("playing");
         if (msg.state.phase === "gameover") setUiPhase("gameover");
-        if (msg.state.phase === "lobby") setUiPhase("lobby");
+        if (msg.state.phase === "lobby") {
+          setUiPhase("lobby");
+          setOpponentLeftMatch(false);
+        }
         bumpLobby();
       }
+    });
+
+    conn.on("close", () => {
+      setOpponentConnected(false);
+      setOpponentLeftMatch(true);
     });
 
     const call = peer.call(rid, stream);
@@ -597,13 +649,14 @@ export default function FacePong() {
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
     }
-    setStatus("Connecting…");
+      setStatus("Connecting…");
     try {
       if (r === "host") {
         await connectAsHost(peerRoomId);
       } else {
         await connectAsGuest(peerRoomId);
       }
+      setOpponentLeftMatch(false);
       setUiPhase("lobby");
     } catch {
       cleanup();
@@ -654,14 +707,30 @@ export default function FacePong() {
     setStatus("Idle");
   }
 
-  function onPlayAgain() {
+  function leaveMatch() {
+    cleanup();
+    setUiPhase("menu");
+    setRole(null);
+    setRoomId(null);
+    setOpponentConnected(false);
+    setOpponentLeftMatch(false);
+    setStatus("Idle");
+  }
+
+  function requestRematch() {
     if (role === "host") {
-      hostResetState();
-      setUiPhase("lobby");
+      if (hostStateRef.current.phase !== "gameover") return;
+      hostStateRef.current.rematch.host = true;
       broadcastAuthoritativeState();
+      bumpLobby();
+      hostTryRematchFromGameOver();
     } else {
-      setUiPhase("lobby");
+      sendToHost({ t: "rematch", want: true });
     }
+  }
+
+  function returnToArcade() {
+    leaveMatch();
   }
 
   useEffect(() => {
@@ -911,11 +980,22 @@ export default function FacePong() {
             <div className={styles.card}>
               <div className={styles.title}>Game Over</div>
               <div className={styles.sub}>Score: {rallyScore}</div>
-              <div className={styles.row}>
-                <button className={styles.button} onClick={onPlayAgain}>
-                  Play Again
-                </button>
-              </div>
+              <RematchBar
+                iWantRematch={
+                  role === "host"
+                    ? hostStateRef.current.rematch.host
+                    : hostStateRef.current.rematch.guest
+                }
+                theyWantRematch={
+                  role === "host"
+                    ? hostStateRef.current.rematch.guest
+                    : hostStateRef.current.rematch.host
+                }
+                onRematch={requestRematch}
+                onLeave={leaveMatch}
+                opponentLeft={opponentLeftMatch}
+                onReturnArcade={returnToArcade}
+              />
             </div>
           </div>
         ) : null}

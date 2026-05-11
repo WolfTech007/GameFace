@@ -30,4 +30,10 @@ export type FaceCardNetMsg =
       hostCard: string;
       guestCard: string;
       durationSec: number;
-    };
+    }
+  /** Guest → host: rematch intent while in ended phase. */
+  | { t: "fc_rematch"; want: boolean }
+  /** Host → guest: synced rematch flags + epoch (UI). */
+  | { t: "fc_rematch_state"; host: boolean; guest: boolean; matchEpoch: number }
+  /** Host → guest: both agreed — reset to lobby for a new match (same room). */
+  | { t: "fc_rematch_go"; matchEpoch: number };

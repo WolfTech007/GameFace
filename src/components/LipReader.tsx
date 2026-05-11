@@ -19,8 +19,12 @@ import {
   type LipReaderNetState,
 } from "@/lib/lipreaderProtocol";
 import { guessMatchesSecret } from "@/lib/lipreaderGuess";
+import { RematchBar } from "@/components/RematchBar";
+import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 
 const QUEUE_POLL_MS = 600;
+/** Set true locally to verify round/guess sync; keep false in production. */
+const LIP_READER_UI_DEBUG = false;
 
 type Role = "host" | "guest";
 
@@ -81,6 +85,7 @@ export default function LipReader() {
 
   const [roomId, setRoomId] = useState<string | null>(null);
   const [opponentConnected, setOpponentConnected] = useState(false);
+  const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
   const [micOk, setMicOk] = useState<boolean | null>(null);
 
   const peerRef = useRef<any>(null);
@@ -93,7 +98,8 @@ export default function LipReader() {
   const hostSeqRef = useRef(0);
   const lastGuestSeqRef = useRef(-1);
 
-  const [, bumpView] = useReducer((x: number) => x + 1, 0);
+  const [viewGen, bumpView] = useReducer((x: number) => x + 1, 0);
+  const lastResetRoundIdRef = useRef<number | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
 
   const [tick, setTick] = useState(0);
@@ -190,6 +196,7 @@ export default function LipReader() {
 
   function finishRoundWin(s: LipReaderNetState) {
     const elapsed = s.roundStartAt ? Date.now() - s.roundStartAt : 0;
+    s.sessionRematch = emptyRematchIntent();
     s.phase = "round_result";
     s.roundDurationMs = elapsed;
     s.roundEndReason = "correct";
@@ -204,6 +211,7 @@ export default function LipReader() {
 
   function finishRoundOut(s: LipReaderNetState) {
     const elapsed = s.roundStartAt ? Date.now() - s.roundStartAt : 0;
+    s.sessionRematch = emptyRematchIntent();
     s.phase = "round_result";
     s.roundDurationMs = elapsed;
     s.roundEndReason = "out_of_guesses";
@@ -245,6 +253,8 @@ export default function LipReader() {
   function scheduleCountdownFromHost(opts: { randomizeCommunicator: boolean }) {
     clearScheduledTimers();
     const s = gameStateRef.current;
+    s.sessionRematch = emptyRematchIntent();
+    s.roundId += 1;
     if (opts.randomizeCommunicator) {
       s.communicatorIsHost = Math.random() < 0.5;
     }
@@ -295,6 +305,30 @@ export default function LipReader() {
     scheduleCountdownFromHost({ randomizeCommunicator: false });
   }
 
+  function hostApplyFullSessionRematch() {
+    const cur = gameStateRef.current;
+    if (cur.phase !== "round_result") return;
+    if (!rematchBothWant(cur.sessionRematch)) return;
+    const hn = cur.hostName;
+    const gn = cur.guestName;
+    const epoch = (cur.sessionEpoch ?? 0) + 1;
+    clearScheduledTimers();
+    gameStateRef.current = initialLipReaderState();
+    gameStateRef.current.sessionEpoch = epoch;
+    gameStateRef.current.hostName = hn;
+    gameStateRef.current.guestName = gn;
+    gameStateRef.current.sessionRematch = emptyRematchIntent();
+    broadcastToGuest();
+  }
+
+  function hostTryFullSessionRematch() {
+    if (roleRef.current !== "host") return;
+    const s = gameStateRef.current;
+    if (s.phase !== "round_result") return;
+    if (!rematchBothWant(s.sessionRematch)) return;
+    hostApplyFullSessionRematch();
+  }
+
   function toggleLobbyReady() {
     if (role === "host") {
       gameStateRef.current.readyLobbyHost = !gameStateRef.current.readyLobbyHost;
@@ -315,6 +349,32 @@ export default function LipReader() {
     }
   }
 
+  function requestSessionRematch() {
+    if (gameStateRef.current.phase !== "round_result") return;
+    if (role === "host") {
+      gameStateRef.current.sessionRematch.host = true;
+      broadcastToGuest();
+      hostTryFullSessionRematch();
+    } else if (role === "guest") {
+      sendToHost({ t: "lr_rematch", want: true });
+    }
+  }
+
+  function leaveMatch() {
+    cleanup();
+    setOpponentConnected(false);
+    setOpponentLeftMatch(false);
+    setUiMenu(true);
+    setMatchmaking(false);
+    setRole(null);
+    setRoomId(null);
+    setStatus("");
+  }
+
+  function returnToArcade() {
+    leaveMatch();
+  }
+
   function submitGuess() {
     const text = guessInput.trim();
     setGuessModalOpen(false);
@@ -324,9 +384,12 @@ export default function LipReader() {
       const s = gameStateRef.current;
       const hostIsGuesser = s.communicatorIsHost === false;
       if (!hostIsGuesser) return;
+      if (s.phase !== "playing") return;
       hostHandleGuess(text);
     } else {
-      sendToHost({ t: "lr_guess", text });
+      const s = gameStateRef.current;
+      if (s.phase !== "playing" || !s.communicatorIsHost) return;
+      sendToHost({ t: "lr_guess", text, roundId: s.roundId });
     }
   }
 
@@ -366,6 +429,7 @@ export default function LipReader() {
     const conn = await waitForHostConnection(peer);
     dataRef.current = conn;
     setOpponentConnected(true);
+    setOpponentLeftMatch(false);
     setStatus("Opponent connected");
 
     conn.on("data", (raw: unknown) => {
@@ -381,10 +445,23 @@ export default function LipReader() {
         s.readyNextGuest = msg.ready;
         broadcastToGuest();
         queueMicrotask(() => hostTryAdvanceNextRound());
+      } else if (msg.t === "lr_rematch") {
+        s.sessionRematch.guest = msg.want;
+        broadcastToGuest();
+        queueMicrotask(() => hostTryFullSessionRematch());
       } else if (msg.t === "lr_guess") {
-        const guestIsGuesser = !s.communicatorIsHost;
-        if (guestIsGuesser) hostHandleGuess(msg.text);
+        // Guest guesses iff host is communicator (same as iAmGuesser for guest).
+        const guestIsGuesser = s.communicatorIsHost === true;
+        if (!guestIsGuesser) return;
+        if (s.phase !== "playing") return;
+        if (msg.roundId !== s.roundId) return;
+        hostHandleGuess(msg.text);
       }
+    });
+
+    conn.on("close", () => {
+      setOpponentConnected(false);
+      setOpponentLeftMatch(true);
     });
 
     conn.on("open", () => {
@@ -416,6 +493,7 @@ export default function LipReader() {
     const conn = await connectGuestWithRetry(peer, rid);
     dataRef.current = conn;
     setOpponentConnected(true);
+    setOpponentLeftMatch(false);
     setStatus("Opponent connected");
 
     conn.on("data", (raw: unknown) => {
@@ -424,7 +502,13 @@ export default function LipReader() {
       if (msg.seq <= lastGuestSeqRef.current) return;
       lastGuestSeqRef.current = msg.seq;
       gameStateRef.current = cloneLipReaderState(msg.state);
+      if (msg.state.phase === "lobby") setOpponentLeftMatch(false);
       bumpView();
+    });
+
+    conn.on("close", () => {
+      setOpponentConnected(false);
+      setOpponentLeftMatch(true);
     });
 
     conn.on("open", () => {
@@ -452,6 +536,7 @@ export default function LipReader() {
       } else {
         await connectAsGuest(peerRoomId);
       }
+      setOpponentLeftMatch(false);
       setUiMenu(false);
       setMatchmaking(false);
       setStatus("Opponent connected.");
@@ -576,112 +661,134 @@ export default function LipReader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const rid = gameStateRef.current.roundId;
+    if (lastResetRoundIdRef.current === rid) return;
+    lastResetRoundIdRef.current = rid;
+    setGuessModalOpen(false);
+    setGuessInput("");
+  }, [viewGen]);
+
   return (
     <main className={styles.root}>
-      <div className={styles.headerMini}>
-        <div className={styles.headerMiniTitle}>Lip Reader</div>
-        <div className={styles.headerMiniSub}>Guess the muted word</div>
-      </div>
-
-      <div className={styles.frame}>
-        <div className={styles.gridsplit}>
-          {gs.phase === "countdown" && gs.countdownN != null ? (
-            <div className={styles.countdownOverlayFull} aria-hidden>
-              <div className={styles.countdownNum}>{gs.countdownN}</div>
-            </div>
-          ) : null}
-          <div className={`${styles.half} ${styles.halfTop}`}>
-            <video ref={remoteVideoRef} className={styles.videoRemote} playsInline autoPlay />
-            <div className={`${styles.labelBar} ${styles.labelTop}`}>{opponentName}</div>
-          </div>
-          <div className={styles.half}>
-            <video ref={localVideoRef} className={styles.video} playsInline muted autoPlay />
-            <div className={styles.labelBar}>{myDisplayName}</div>
-          </div>
+      <div className={styles.gameColumn}>
+        <div className={styles.topBar}>
+          <span className={styles.topBarTitle}>Lip Reader</span>
+          <span className={styles.topBarSep}>·</span>
+          <span className={styles.topBarSub}>Guess the muted word</span>
         </div>
 
-        {!uiMenu && !matchmaking && opponentConnected ? (
-          <div className={styles.hudRow}>
-            {gs.phase === "lobby" ? (
-              <>
-                <div className={styles.rolePill}>Lobby</div>
-                <button type="button" className={styles.buttonSecondary} onClick={toggleLobbyReady}>
-                  {lobbyReadyLabel}
-                </button>
-                {role === "host" ? (
-                  <button type="button" className={styles.button} onClick={hostTryStartFromLobby} disabled={!canHostStart}>
-                    Start Game
-                  </button>
-                ) : (
-                  <div className={styles.status}>Wait for host to start.</div>
-                )}
-              </>
-            ) : null}
-
-            {gs.phase === "countdown" ? (
-              <div className={styles.rolePill}>Get ready…</div>
-            ) : null}
-
-            {gs.phase === "playing" ? (
-              <>
-                <div className={styles.rolePill}>{iAmCommunicator ? "You are acting" : "You are guessing"}</div>
-                <div className={styles.timerBig}>{elapsedSec}s</div>
-                <div className={styles.guessesBig}>Guesses left: {gs.guessesRemaining}</div>
-                {iAmCommunicator ? (
-                  <div className={styles.audioHint}>Your mic is muted. Act it out.</div>
-                ) : (
-                  <div className={styles.audioHint}>Their mic is muted. Guess the word.</div>
-                )}
-                {gs.guesserHint && iAmGuesser ? (
-                  <div className={styles.feedbackBanner}>{gs.guesserHint}</div>
-                ) : null}
-              </>
-            ) : null}
-
-            {gs.phase === "round_result" ? (
-              <div className={styles.resultCard}>
-                <div className={styles.resultHeadline}>
-                  {gs.roundEndReason === "correct"
-                    ? "Correct!"
-                    : gs.roundEndReason === "out_of_guesses"
-                      ? "Out of guesses"
-                      : "Round over"}
-                </div>
-                <div className={styles.resultMuted}>
-                  Word: <strong>{gs.lastRoundWord}</strong>
-                </div>
-                <div className={styles.resultMuted}>Time: {((gs.lastRoundTimeMs ?? 0) / 1000).toFixed(1)}s</div>
-                <div className={styles.resultMuted}>Guesses used: {gs.lastRoundAttempts}</div>
-                <div className={styles.actionsRow}>
-                  <button type="button" className={styles.button} onClick={toggleNextReady}>
-                    {nextReadyLabel}
-                  </button>
-                </div>
-                <div className={styles.status}>Both tap Next Round to continue.</div>
+        <div className={styles.frame}>
+          <div className={styles.gridsplit}>
+            {gs.phase === "countdown" && gs.countdownN != null ? (
+              <div className={styles.countdownOverlayFull} aria-hidden>
+                <div className={styles.countdownNum}>{gs.countdownN}</div>
               </div>
             ) : null}
+            <div className={`${styles.half} ${styles.halfTop}`}>
+              <video ref={remoteVideoRef} className={styles.videoRemote} playsInline autoPlay />
+              <div className={`${styles.labelBar} ${styles.labelTop}`}>{opponentName}</div>
+            </div>
+            {!uiMenu && !matchmaking && opponentConnected && (gs.phase === "playing" || gs.phase === "countdown") ? (
+              <div className={styles.hudFloat} aria-live="polite">
+                {gs.phase === "countdown" ? <span className={styles.hudChip}>Get ready…</span> : null}
+                {gs.phase === "playing" ? (
+                  <>
+                    <span className={styles.hudChip}>{iAmCommunicator ? "Acting" : "Guessing"}</span>
+                    <span className={styles.hudTimer}>{elapsedSec}s</span>
+                    <span className={styles.hudGuesses}>· {gs.guessesRemaining} left</span>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+            <div className={`${styles.half} ${styles.halfBottom}`}>
+              <video ref={localVideoRef} className={styles.video} playsInline muted autoPlay />
+              <div className={styles.labelBar}>{myDisplayName}</div>
+              {showWordToMe ? (
+                <div className={styles.wordRevealChip}>
+                  <div className={styles.wordRevealLabel}>Your word</div>
+                  <div className={styles.wordRevealText}>{gs.secretWord}</div>
+                </div>
+              ) : null}
+            </div>
           </div>
-        ) : null}
 
-        {gs.phase === "playing" && iAmGuesser ? (
-          <p className={styles.guesserPrompt}>Watch closely. What are they saying?</p>
-        ) : null}
+          {!uiMenu && !matchmaking && opponentConnected && gs.phase === "playing" ? (
+            <div className={styles.hintStrip}>
+              {iAmCommunicator ? "Mic muted — act it out." : "Their mic is muted — watch their lips."}
+              {gs.guesserHint && iAmGuesser ? <span className={styles.hintNope}> {gs.guesserHint}</span> : null}
+            </div>
+          ) : null}
 
-        {showWordToMe ? (
-          <div className={styles.wordReveal}>
-            <div className={styles.wordRevealLabel}>Your word</div>
-            <div className={styles.wordRevealText}>{gs.secretWord}</div>
-          </div>
-        ) : null}
+          {!uiMenu && !matchmaking && opponentConnected && gs.phase === "round_result" ? (
+            <div className={styles.resultCompact}>
+              <div className={styles.resultHeadlineSmall}>
+                {gs.roundEndReason === "correct"
+                  ? "Correct!"
+                  : gs.roundEndReason === "out_of_guesses"
+                    ? "Out of guesses"
+                    : "Round over"}
+              </div>
+              <div className={styles.resultLine}>
+                <strong>{gs.lastRoundWord}</strong> · {((gs.lastRoundTimeMs ?? 0) / 1000).toFixed(1)}s · {gs.lastRoundAttempts}{" "}
+                tries
+              </div>
+              <div className={styles.resultNextHint}>Both tap Next Round</div>
+              <RematchBar
+                iWantRematch={role === "host" ? gs.sessionRematch.host : role === "guest" ? gs.sessionRematch.guest : false}
+                theyWantRematch={role === "host" ? gs.sessionRematch.guest : role === "guest" ? gs.sessionRematch.host : false}
+                onRematch={requestSessionRematch}
+                onLeave={leaveMatch}
+                opponentLeft={opponentLeftMatch}
+                onReturnArcade={returnToArcade}
+              />
+            </div>
+          ) : null}
 
-        {gs.phase === "playing" && iAmGuesser ? (
-          <div className={styles.actionsRow}>
-            <button type="button" className={styles.button} onClick={() => setGuessModalOpen(true)}>
-              I Know It
-            </button>
-          </div>
-        ) : null}
+          {!uiMenu && !matchmaking && opponentConnected ? (
+            <div className={styles.bottomDock}>
+              {gs.phase === "lobby" ? (
+                <>
+                  <button type="button" className={styles.buttonSecondary} onClick={toggleLobbyReady}>
+                    {lobbyReadyLabel}
+                  </button>
+                  {role === "host" ? (
+                    <button type="button" className={styles.button} onClick={hostTryStartFromLobby} disabled={!canHostStart}>
+                      Start Game
+                    </button>
+                  ) : (
+                    <span className={styles.dockHint}>Wait for host…</span>
+                  )}
+                </>
+              ) : null}
+              {gs.phase === "round_result" ? (
+                <button type="button" className={styles.button} onClick={toggleNextReady}>
+                  {nextReadyLabel}
+                </button>
+              ) : null}
+              {gs.phase === "playing" && iAmGuesser ? (
+                <button type="button" className={styles.button} onClick={() => setGuessModalOpen(true)}>
+                  I Know It
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
+
+      {LIP_READER_UI_DEBUG && !uiMenu && opponentConnected ? (
+        <div className={styles.debugStrip}>
+          <div>roundId {gs.roundId}</div>
+          <div>phase {gs.phase}</div>
+          <div>commHost {String(gs.communicatorIsHost)}</div>
+          <div>role {role ?? "—"}</div>
+          <div>guessLeft {gs.guessesRemaining}</div>
+          <div>word {role === "host" ? gs.secretWord || "—" : gs.secretWord ? "[synced]" : "[hidden]"}</div>
+          <div>
+            roundOver {String(gs.phase === "round_result")} {gs.roundEndReason ?? "—"}
+          </div>
+        </div>
+      ) : null}
 
       {guessModalOpen ? (
         <div className={styles.overlay} role="dialog" aria-modal="true">

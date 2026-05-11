@@ -15,6 +15,8 @@ export type FaceHockeyOverlay =
 
 export type FaceHockeyNetState = {
   phase: "lobby" | "playing" | "gameover";
+  matchEpoch: number;
+  rematch: { host: boolean; guest: boolean };
   scoreA: number;
   scoreB: number;
   puck: { x: number; y: number; vx: number; vy: number };
@@ -33,7 +35,9 @@ export type FaceHockeyNetState = {
 export type GuestToHostFHMsg =
   | { t: "fh_mallet"; x: number; y: number }
   | { t: "fh_ready"; ready: boolean }
-  | { t: "fh_play_again" };
+  /** @deprecated prefer fh_rematch; still handled as leave-to-lobby for older clients */
+  | { t: "fh_play_again" }
+  | { t: "fh_rematch"; want: boolean };
 
 export type HostToGuestFHMsg = {
   t: "fh_state";
@@ -45,6 +49,8 @@ export type HostToGuestFHMsg = {
 export function initialFaceHockeyState(): FaceHockeyNetState {
   return {
     phase: "lobby",
+    matchEpoch: 0,
+    rematch: { host: false, guest: false },
     scoreA: 0,
     scoreB: 0,
     puck: { x: 0.5, y: 0.5, vx: 0, vy: 0 },
@@ -59,8 +65,11 @@ export function initialFaceHockeyState(): FaceHockeyNetState {
 
 export function cloneFaceHockeyState(s: FaceHockeyNetState): FaceHockeyNetState {
   const r = s.ready ?? { host: false, guest: false };
+  const rm = s.rematch ?? { host: false, guest: false };
   return {
     phase: s.phase,
+    matchEpoch: s.matchEpoch ?? 0,
+    rematch: { ...rm },
     scoreA: s.scoreA,
     scoreB: s.scoreB,
     puck: { ...s.puck },

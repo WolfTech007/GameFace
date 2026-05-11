@@ -9,4 +9,7 @@ export type StaringNetMsg =
       t: "game_over";
       winnerIsHost: boolean;
       roundSeconds: number;
-    };
+    }
+  | { t: "sc_rematch"; want: boolean }
+  | { t: "sc_rematch_state"; host: boolean; guest: boolean; matchEpoch: number }
+  | { t: "sc_rematch_go"; matchEpoch: number };

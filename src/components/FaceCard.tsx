@@ -15,6 +15,8 @@ import { drawFaceCardOverlay } from "@/lib/facecardDraw";
 import { POP_CULTURE_DECK, pickTwoDistinctRandom } from "@/lib/facecardDeck";
 import { guessMatchesSecret } from "@/lib/facecardGuess";
 import type { FaceCardNetMsg } from "@/lib/facecardProtocol";
+import { RematchBar } from "@/components/RematchBar";
+import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/rematchSync";
 
 type Phase = "intro" | "queue" | "peer_setup" | "lobby" | "playing" | "ended";
 
@@ -141,6 +143,12 @@ export default function FaceCard() {
 
   const [endPayload, setEndPayload] = useState<EndPayload | null>(null);
 
+  const rematchIntentRef = useRef<RematchIntent>(emptyRematchIntent());
+  const [, setRematchBump] = useState(0);
+  const matchEpochRef = useRef(0);
+  const [guestRematch, setGuestRematch] = useState<RematchIntent>(emptyRematchIntent());
+  const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
+
   const peerRef = useRef<{ destroy?: () => void } | null>(null);
   const dataRef = useRef<{ open?: boolean; send: (m: FaceCardNetMsg) => void } | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -151,6 +159,20 @@ export default function FaceCard() {
     const c = dataRef.current as { open?: boolean; send?: (m: FaceCardNetMsg) => void } | null;
     if (c?.open && c.send) c.send(msg);
   }, []);
+
+  const bumpRematchUi = useCallback(() => {
+    setRematchBump((x) => x + 1);
+  }, []);
+
+  function broadcastRematchStateFromHost() {
+    if (roleRef.current !== "host") return;
+    sendNet({
+      t: "fc_rematch_state",
+      host: rematchIntentRef.current.host,
+      guest: rematchIntentRef.current.guest,
+      matchEpoch: matchEpochRef.current,
+    });
+  }
 
   async function leaveQueue() {
     try {
@@ -212,6 +234,10 @@ export default function FaceCard() {
     const start = startWallMsRef.current ?? Date.now();
     const durationSec = Math.max(0, (Date.now() - start) / 1000);
 
+    rematchIntentRef.current = emptyRematchIntent();
+    bumpRematchUi();
+    broadcastRematchStateFromHost();
+
     sendNet({
       t: "fc_end",
       outcome,
@@ -243,6 +269,7 @@ export default function FaceCard() {
   }
 
   function pushEndGuest(msg: Extract<FaceCardNetMsg, { t: "fc_end" }>) {
+    if (phaseRef.current !== "playing") return;
     gameEndedRef.current = true;
     setPhase("ended");
     const localIsHost = roleRef.current === "host";
@@ -285,6 +312,106 @@ export default function FaceCard() {
     setGuestGuessCount(g);
   }
 
+  function hostTryApplyRematch() {
+    if (roleRef.current !== "host") return;
+    if (phaseRef.current !== "ended") return;
+    if (!rematchBothWant(rematchIntentRef.current)) return;
+
+    matchEpochRef.current += 1;
+    const epoch = matchEpochRef.current;
+    rematchIntentRef.current = emptyRematchIntent();
+    bumpRematchUi();
+
+    gameEndedRef.current = false;
+    hostSecretRef.current = null;
+    guestSecretRef.current = null;
+    remoteCardLabelRef.current = "";
+    startWallMsRef.current = null;
+    syncPhysicalGuesses(3, 3);
+    myGuessAttemptsRef.current = 0;
+    setTimerSec(0);
+    setEndPayload(null);
+    setGuessModalOpen(false);
+    setGuessInput("");
+    setToast(null);
+    setLocalReady(false);
+    setRemoteReady(false);
+    setPhase("lobby");
+
+    sendNet({ t: "fc_rematch_go", matchEpoch: epoch });
+    sendNet({
+      t: "fc_rematch_state",
+      host: false,
+      guest: false,
+      matchEpoch: epoch,
+    });
+    sendNet({ t: "fc_ready", ready: false });
+  }
+
+  function guestApplyRematchGo(epoch: number) {
+    void epoch;
+    setGuestRematch(emptyRematchIntent());
+    gameEndedRef.current = false;
+    hostSecretRef.current = null;
+    guestSecretRef.current = null;
+    remoteCardLabelRef.current = "";
+    startWallMsRef.current = null;
+    syncPhysicalGuesses(3, 3);
+    myGuessAttemptsRef.current = 0;
+    setTimerSec(0);
+    setEndPayload(null);
+    setGuessModalOpen(false);
+    setGuessInput("");
+    setToast(null);
+    setLocalReady(false);
+    setRemoteReady(false);
+    setPhase("lobby");
+    sendNet({ t: "fc_ready", ready: false });
+  }
+
+  function requestRematch() {
+    if (phaseRef.current !== "ended") return;
+    if (roleRef.current === "host") {
+      rematchIntentRef.current = { ...rematchIntentRef.current, host: true };
+      bumpRematchUi();
+      broadcastRematchStateFromHost();
+      queueMicrotask(() => hostTryApplyRematch());
+    } else {
+      sendNet({ t: "fc_rematch", want: true });
+    }
+  }
+
+  function leaveMatch() {
+    void leaveQueue();
+    cleanupPeer();
+    setPhase("intro");
+    setStatus("");
+    setOpponentName(null);
+    setRole(null);
+    setLocalReady(false);
+    setRemoteReady(false);
+    setGuessModalOpen(false);
+    setGuessInput("");
+    setToast(null);
+    syncPhysicalGuesses(3, 3);
+    myGuessAttemptsRef.current = 0;
+    setTimerSec(0);
+    setEndPayload(null);
+    gameEndedRef.current = false;
+    hostSecretRef.current = null;
+    guestSecretRef.current = null;
+    remoteCardLabelRef.current = "";
+    startWallMsRef.current = null;
+    rematchIntentRef.current = emptyRematchIntent();
+    setGuestRematch(emptyRematchIntent());
+    bumpRematchUi();
+    setOpponentLeftMatch(false);
+  }
+
+  function returnToArcade() {
+    leaveMatch();
+  }
+
   function wireHost(conn: any) {
     conn.on("data", (raw: unknown) => {
       const msg = raw as FaceCardNetMsg;
@@ -294,6 +421,13 @@ export default function FaceCard() {
       }
       if (msg.t === "fc_ready") {
         setRemoteReady(msg.ready);
+        return;
+      }
+      if (msg.t === "fc_rematch") {
+        rematchIntentRef.current = { ...rematchIntentRef.current, guest: msg.want };
+        bumpRematchUi();
+        broadcastRematchStateFromHost();
+        queueMicrotask(() => hostTryApplyRematch());
         return;
       }
       if (msg.t === "fc_try") {
@@ -347,6 +481,14 @@ export default function FaceCard() {
         setRemoteReady(msg.ready);
         return;
       }
+      if (msg.t === "fc_rematch_state") {
+        setGuestRematch({ host: msg.host, guest: msg.guest });
+        return;
+      }
+      if (msg.t === "fc_rematch_go") {
+        guestApplyRematchGo(msg.matchEpoch);
+        return;
+      }
       if (msg.t === "fc_begin") {
         startWallMsRef.current = msg.startWallMs;
         remoteCardLabelRef.current = msg.remoteCardLabel;
@@ -396,7 +538,12 @@ export default function FaceCard() {
 
       const conn = await waitForHostConnection(peer);
       dataRef.current = conn;
+      setOpponentLeftMatch(false);
       wireHost(conn);
+
+      conn.on("close", () => {
+        setOpponentLeftMatch(true);
+      });
 
       conn.on("open", () => {
         sendNet({ t: "fc_hello", displayName: nameRef.current || "Player" });
@@ -416,7 +563,12 @@ export default function FaceCard() {
 
       const conn = await connectGuestWithRetry(peer, roomId);
       dataRef.current = conn;
+      setOpponentLeftMatch(false);
       wireGuest(conn);
+
+      conn.on("close", () => {
+        setOpponentLeftMatch(true);
+      });
 
       conn.on("open", () => {
         sendNet({ t: "fc_hello", displayName: nameRef.current || "Player" });
@@ -643,29 +795,6 @@ export default function FaceCard() {
     };
   }, []);
 
-  function playAgain() {
-    void leaveQueue();
-    cleanupPeer();
-    setPhase("intro");
-    setStatus("");
-    setOpponentName(null);
-    setRole(null);
-    setLocalReady(false);
-    setRemoteReady(false);
-    setGuessModalOpen(false);
-    setGuessInput("");
-    setToast(null);
-    syncPhysicalGuesses(3, 3);
-    myGuessAttemptsRef.current = 0;
-    setTimerSec(0);
-    setEndPayload(null);
-    gameEndedRef.current = false;
-    hostSecretRef.current = null;
-    guestSecretRef.current = null;
-    remoteCardLabelRef.current = "";
-    startWallMsRef.current = null;
-  }
-
   const displayLocalName = name.trim() || "You";
   const displayRemoteName = opponentName || "Opponent";
 
@@ -860,9 +989,14 @@ export default function FaceCard() {
                       <div className={styles.cardBody}>Time: {endPayload.durationSec.toFixed(2)}s</div>
                     </>
                   )}
-                  <button type="button" className={styles.primaryBtn} onClick={playAgain}>
-                    Play Again
-                  </button>
+                  <RematchBar
+                    iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
+                    theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
+                    onRematch={requestRematch}
+                    onLeave={leaveMatch}
+                    opponentLeft={opponentLeftMatch}
+                    onReturnArcade={returnToArcade}
+                  />
                 </div>
               </div>
             ) : null}

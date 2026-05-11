@@ -17,6 +17,8 @@ import {
   createHighSignalSmoother,
 } from "@/lib/eyeBlinkEar";
 import type { StaringNetMsg } from "@/lib/staringContestProtocol";
+import { RematchBar } from "@/components/RematchBar";
+import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/rematchSync";
 
 type Phase =
   | "intro"
@@ -33,6 +35,18 @@ const GRACE_MS = 450;
 const FACE_LOSE_AFTER_MS = 1000;
 const BLINK_FRAMES = 3;
 const QUEUE_POLL_MS = 600;
+
+/** MM:SS:CC stopwatch from elapsed ms (centiseconds = hundredths of a second). */
+function formatStopwatchMs(elapsedMs: number): string {
+  const e = Math.max(0, Math.floor(elapsedMs));
+  const totalCs = Math.floor(e / 10);
+  const mm = Math.min(99, Math.floor(totalCs / 6000));
+  const rem = totalCs % 6000;
+  const ss = Math.floor(rem / 100);
+  const cc = rem % 100;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${pad(mm)}:${pad(ss)}:${pad(cc)}`;
+}
 
 function median(nums: number[]) {
   if (!nums.length) return 0;
@@ -80,7 +94,8 @@ export default function StaringContest() {
   const [remoteReady, setRemoteReady] = useState(false);
 
   const [countdownN, setCountdownN] = useState<number | null>(null);
-  const [timerSeconds, setTimerSeconds] = useState(0);
+  /** Elapsed ms while `phase === "playing"` (display only; same wall clock as gameplay). */
+  const [playingElapsedMs, setPlayingElapsedMs] = useState(0);
 
   const [warnFace, setWarnFace] = useState(false);
   const [endedWinner, setEndedWinner] = useState<boolean | null>(null);
@@ -100,6 +115,16 @@ export default function StaringContest() {
   const blinkBlendSmootherRef = useRef(createHighSignalSmoother(3, 0.38));
   const faceMissingSinceRef = useRef<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
+
+  const rematchIntentRef = useRef<RematchIntent>(emptyRematchIntent());
+  const [, setRematchBump] = useState(0);
+  const matchEpochRef = useRef(0);
+  const [guestRematch, setGuestRematch] = useState<RematchIntent>(emptyRematchIntent());
+  const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
+
+  const bumpRematchUi = useCallback(() => {
+    setRematchBump((x) => x + 1);
+  }, []);
 
   const sendNet = useCallback((msg: StaringNetMsg) => {
     const c = dataRef.current;
@@ -123,6 +148,16 @@ export default function StaringContest() {
       for (const t of s.getTracks()) t.stop();
     }
     streamRef.current = null;
+  }
+
+  function broadcastRematchStateFromHost() {
+    if (hostRoleRef.current !== "host") return;
+    sendNet({
+      t: "sc_rematch_state",
+      host: rematchIntentRef.current.host,
+      guest: rematchIntentRef.current.guest,
+      matchEpoch: matchEpochRef.current,
+    });
   }
 
   async function ensureCamera() {
@@ -205,6 +240,10 @@ export default function StaringContest() {
 
   function resolveLoss(fromHost: boolean) {
     if (gameEndedRef.current) return;
+    rematchIntentRef.current = emptyRematchIntent();
+    bumpRematchUi();
+    broadcastRematchStateFromHost();
+
     gameEndedRef.current = true;
     const winnerIsHost = !fromHost;
     const start = gameStartWallMsRef.current ?? Date.now();
@@ -222,6 +261,106 @@ export default function StaringContest() {
     });
   }
 
+  function hostTryApplyRematch() {
+    if (hostRoleRef.current !== "host") return;
+    if (phaseRef.current !== "ended") return;
+    if (!rematchBothWant(rematchIntentRef.current)) return;
+
+    matchEpochRef.current += 1;
+    const epoch = matchEpochRef.current;
+    rematchIntentRef.current = emptyRematchIntent();
+    bumpRematchUi();
+
+    gameEndedRef.current = false;
+    gameStartWallMsRef.current = null;
+    faceMissingSinceRef.current = null;
+    setEndedWinner(null);
+    setRoundSeconds(0);
+    setPlayingElapsedMs(0);
+    setCountdownN(null);
+    setWarnFace(false);
+    earCalibRef.current = [];
+    earThresholdRef.current = 0.22;
+    blinkSmootherRef.current.reset();
+    blinkBlendSmootherRef.current.reset();
+    setLocalReady(false);
+    setRemoteReady(false);
+    setPhase("lobby");
+
+    sendNet({ t: "sc_rematch_go", matchEpoch: epoch });
+    sendNet({
+      t: "sc_rematch_state",
+      host: false,
+      guest: false,
+      matchEpoch: epoch,
+    });
+    sendNet({ t: "ready", ready: false });
+  }
+
+  function guestApplyRematchGo(epoch: number) {
+    void epoch;
+    setGuestRematch(emptyRematchIntent());
+    gameEndedRef.current = false;
+    gameStartWallMsRef.current = null;
+    faceMissingSinceRef.current = null;
+    setEndedWinner(null);
+    setRoundSeconds(0);
+    setPlayingElapsedMs(0);
+    setCountdownN(null);
+    setWarnFace(false);
+    earCalibRef.current = [];
+    earThresholdRef.current = 0.22;
+    blinkSmootherRef.current.reset();
+    blinkBlendSmootherRef.current.reset();
+    setLocalReady(false);
+    setRemoteReady(false);
+    setPhase("lobby");
+    sendNet({ t: "ready", ready: false });
+  }
+
+  function requestRematch() {
+    if (phaseRef.current !== "ended") return;
+    if (hostRoleRef.current === "host") {
+      rematchIntentRef.current = { ...rematchIntentRef.current, host: true };
+      bumpRematchUi();
+      broadcastRematchStateFromHost();
+      queueMicrotask(() => hostTryApplyRematch());
+    } else {
+      sendNet({ t: "sc_rematch", want: true });
+    }
+  }
+
+  function leaveMatch() {
+    void leaveQueue();
+    cleanupPeer();
+    setPhase("intro");
+    setStatus("");
+    setOpponentName(null);
+    setPeerRoomId(null);
+    setRole(null);
+    hostRoleRef.current = null;
+    setLocalReady(false);
+    setRemoteReady(false);
+    setCountdownN(null);
+    setEndedWinner(null);
+    setRoundSeconds(0);
+    gameEndedRef.current = false;
+    earThresholdRef.current = 0.22;
+    earCalibRef.current = [];
+    blinkSmootherRef.current.reset();
+    blinkBlendSmootherRef.current.reset();
+    faceMissingSinceRef.current = null;
+    gameStartWallMsRef.current = null;
+    rematchIntentRef.current = emptyRematchIntent();
+    setGuestRematch(emptyRematchIntent());
+    bumpRematchUi();
+    setOpponentLeftMatch(false);
+  }
+
+  function returnToArcade() {
+    leaveMatch();
+  }
+
   function wireData(conn: any, isHost: boolean) {
     conn.on("data", (raw: unknown) => {
       const msg = raw as StaringNetMsg;
@@ -234,7 +373,23 @@ export default function StaringContest() {
         return;
       }
 
+      if (isHost && msg.t === "sc_rematch") {
+        rematchIntentRef.current = { ...rematchIntentRef.current, guest: msg.want };
+        bumpRematchUi();
+        broadcastRematchStateFromHost();
+        queueMicrotask(() => hostTryApplyRematch());
+        return;
+      }
+
       if (!isHost) {
+        if (msg.t === "sc_rematch_state") {
+          setGuestRematch({ host: msg.host, guest: msg.guest });
+          return;
+        }
+        if (msg.t === "sc_rematch_go") {
+          guestApplyRematchGo(msg.matchEpoch);
+          return;
+        }
         if (msg.t === "countdown") {
           setPhase("countdown");
           setCountdownN(msg.n);
@@ -257,6 +412,7 @@ export default function StaringContest() {
           return;
         }
         if (msg.t === "game_over") {
+          if (phaseRef.current !== "playing" && phaseRef.current !== "countdown") return;
           gameEndedRef.current = true;
           const localIsHost = hostRoleRef.current === "host";
           setEndedWinner(msg.winnerIsHost === localIsHost);
@@ -292,7 +448,12 @@ export default function StaringContest() {
 
       const conn = await waitForHostConnection(peer);
       dataRef.current = conn;
+      setOpponentLeftMatch(false);
       wireData(conn, true);
+
+      conn.on("close", () => {
+        setOpponentLeftMatch(true);
+      });
 
       conn.on("open", () => {
         sendNet({ t: "hello", name: nameRef.current || "Player" });
@@ -312,7 +473,12 @@ export default function StaringContest() {
 
       const conn = await connectGuestToHost(peer, roomId, { reliable: true });
       dataRef.current = conn;
+      setOpponentLeftMatch(false);
       wireData(conn, false);
+
+      conn.on("close", () => {
+        setOpponentLeftMatch(true);
+      });
 
       conn.on("open", () => {
         sendNet({ t: "hello", name: nameRef.current || "Player" });
@@ -389,7 +555,7 @@ export default function StaringContest() {
 
       // Timer uses wall clock only — must not depend on video readiness or landmark detection.
       if (ph === "playing" && gameStartWallMsRef.current != null) {
-        setTimerSeconds(Math.max(0, (Date.now() - gameStartWallMsRef.current) / 1000));
+        setPlayingElapsedMs(Math.max(0, Date.now() - gameStartWallMsRef.current));
       }
 
       if (ph === "playing" || ph === "countdown") {
@@ -464,29 +630,6 @@ export default function StaringContest() {
     sendNet({ t: "ready", ready: next });
   }
 
-  function playAgain() {
-    void leaveQueue();
-    cleanupPeer();
-    setPhase("intro");
-    setStatus("");
-    setOpponentName(null);
-    setPeerRoomId(null);
-    setRole(null);
-    hostRoleRef.current = null;
-    setLocalReady(false);
-    setRemoteReady(false);
-    setCountdownN(null);
-    setEndedWinner(null);
-    setRoundSeconds(0);
-    gameEndedRef.current = false;
-    earThresholdRef.current = 0.22;
-    earCalibRef.current = [];
-    blinkSmootherRef.current.reset();
-    blinkBlendSmootherRef.current.reset();
-    faceMissingSinceRef.current = null;
-    gameStartWallMsRef.current = null;
-  }
-
   const displayLocalName = name.trim() || "You";
   const displayRemoteName = opponentName || "Opponent";
 
@@ -531,31 +674,35 @@ export default function StaringContest() {
 
       {showGameChrome ? (
         <div className={styles.gameWrap}>
-          <div className={styles.splitTop}>
-            <video
-              ref={remoteVideoRef}
-              className={`${styles.video} ${styles.videoRemote}`}
-              playsInline
-              autoPlay
-            />
-            <div className={styles.nameTag}>{displayRemoteName}</div>
-          </div>
+          <div className={styles.splitStage}>
+            <div className={styles.splitTop}>
+              <video
+                ref={remoteVideoRef}
+                className={`${styles.video} ${styles.videoRemote}`}
+                playsInline
+                autoPlay
+              />
+              <div className={styles.nameTag}>{displayRemoteName}</div>
+            </div>
 
-          <div className={styles.divider} />
+            <div className={styles.seamWrap} aria-hidden={phase !== "playing"}>
+              <div className={styles.seamLine} />
+              {phase === "playing" ? (
+                <div className={styles.timerSeam} role="timer" aria-live="off">
+                  <span className={styles.timerSeamText}>{formatStopwatchMs(playingElapsedMs)}</span>
+                </div>
+              ) : null}
+            </div>
 
-          <div className={styles.splitBottom}>
-            <video
-              ref={localVideoRef}
-              className={`${styles.video} ${styles.videoLocal}`}
-              playsInline
-              muted
-              autoPlay
-            />
-            <div className={styles.nameTag}>{displayLocalName}</div>
-
-            {phase === "playing" ? (
-              <div className={styles.timerOverlay}>{timerSeconds.toFixed(2)}s</div>
-            ) : null}
+            <div className={styles.splitBottom}>
+              <video
+                ref={localVideoRef}
+                className={`${styles.video} ${styles.videoLocal}`}
+                playsInline
+                muted
+                autoPlay
+              />
+              <div className={styles.nameTag}>{displayLocalName}</div>
 
             {phase === "countdown" && countdownN !== null && countdownN > 0 ? (
               <div className={styles.countdownFlash}>{countdownN}</div>
@@ -599,12 +746,18 @@ export default function StaringContest() {
                   <div className={styles.cardBody}>
                     You kept your eyes open for {roundSeconds.toFixed(2)} seconds.
                   </div>
-                  <button type="button" className={styles.primaryBtn} onClick={playAgain}>
-                    Play Again
-                  </button>
+                  <RematchBar
+                    iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
+                    theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}
+                    onRematch={requestRematch}
+                    onLeave={leaveMatch}
+                    opponentLeft={opponentLeftMatch}
+                    onReturnArcade={returnToArcade}
+                  />
                 </div>
               </div>
             ) : null}
+            </div>
           </div>
         </div>
       ) : null}

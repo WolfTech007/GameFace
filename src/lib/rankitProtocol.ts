@@ -10,6 +10,9 @@ export type RankItPromptPayload = {
 
 export type RankItSharedState = {
   phase: RankItPhase;
+  /** Bump on full-session rematch from reveal (stale client messages guard). */
+  matchEpoch: number;
+  sessionRematch: { host: boolean; guest: boolean };
   roundId: number;
   prompt: RankItPromptPayload | null;
   names: { host: string; guest: string };
@@ -27,13 +30,17 @@ export type RankItGuestMsg =
   | { t: "ri_g_hello"; name: string }
   | { t: "ri_g_lobby_ready"; ready: boolean }
   | { t: "ri_g_lock"; roundId: number; order: Tuple5 }
-  | { t: "ri_g_next_ready"; roundId: number; ready: boolean };
+  | { t: "ri_g_next_ready"; roundId: number; ready: boolean }
+  | { t: "ri_g_rematch"; want: boolean };
 
 export type RankItNetMsg = RankItGuestMsg | { t: "ri_sync"; state: RankItSharedState };
 
 export function cloneRankItState(s: RankItSharedState): RankItSharedState {
+  const sr = s.sessionRematch ?? { host: false, guest: false };
   return {
     phase: s.phase,
+    matchEpoch: s.matchEpoch ?? 0,
+    sessionRematch: { ...sr },
     roundId: s.roundId,
     prompt: s.prompt
       ? {
@@ -57,6 +64,8 @@ export function cloneRankItState(s: RankItSharedState): RankItSharedState {
 export function initialRankItState(): RankItSharedState {
   return {
     phase: "lobby",
+    matchEpoch: 0,
+    sessionRematch: { host: false, guest: false },
     roundId: 0,
     prompt: null,
     names: { host: "Player", guest: "Player" },

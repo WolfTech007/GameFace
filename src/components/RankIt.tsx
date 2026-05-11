@@ -20,6 +20,8 @@ import {
 } from "@/lib/rankitProtocol";
 import { computeRankSimilarity, isValidTuple5Order } from "@/lib/rankitScore";
 import { POP_CULTURE_DEBATES, shuffleMatchDeckOrder } from "@/lib/rankitPrompts";
+import { RematchBar } from "@/components/RematchBar";
+import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 
 const QUEUE_POLL_MS = 600;
 
@@ -136,6 +138,7 @@ export default function RankIt() {
   function tryStartFromLobbyInPlace(s: RankItSharedState) {
     if (s.phase !== "lobby") return;
     if (!s.lobbyReady.host || !s.lobbyReady.guest) return;
+    s.sessionRematch = emptyRematchIntent();
     s.roundId = 1;
     s.phase = "ranking";
     s.prompt = hostPickPromptPayload();
@@ -150,6 +153,7 @@ export default function RankIt() {
     const go = s.ranking.guestOrder;
     if (!ho || !go) return;
     const { positionMatches, compatPct } = computeRankSimilarity(ho, go);
+    s.sessionRematch = emptyRematchIntent();
     s.phase = "reveal";
     s.reveal = { positionMatches, compatPct };
   }
@@ -157,6 +161,7 @@ export default function RankIt() {
   function tryNextRoundInPlace(s: RankItSharedState) {
     if (s.phase !== "reveal") return;
     if (!s.nextRoundReady.host || !s.nextRoundReady.guest) return;
+    s.sessionRematch = emptyRematchIntent();
     s.roundId += 1;
     s.phase = "ranking";
     s.prompt = hostPickPromptPayload();
@@ -177,6 +182,22 @@ export default function RankIt() {
     [],
   );
 
+  function hostTryFullSessionRematch(s: RankItSharedState) {
+    if (s.phase !== "reveal") return;
+    if (!rematchBothWant(s.sessionRematch)) return;
+    const epoch = (s.matchEpoch ?? 0) + 1;
+    s.matchEpoch = epoch;
+    resetHostDeck(`${matchRoomIdRef.current}-rematch-${epoch}`);
+    s.sessionRematch = emptyRematchIntent();
+    s.phase = "lobby";
+    s.roundId = 0;
+    s.prompt = null;
+    s.ranking = { hostOrder: null, guestOrder: null };
+    s.reveal = null;
+    s.nextRoundReady = { host: false, guest: false };
+    s.lobbyReady = { host: false, guest: false };
+  }
+
   const handleGuestMessage = useCallback(
     (msg: RankItGuestMsg) => {
       hostMutate((s) => {
@@ -195,6 +216,11 @@ export default function RankIt() {
           case "ri_g_next_ready":
             if (msg.roundId !== s.roundId || s.phase !== "reveal") return;
             s.nextRoundReady.guest = msg.ready;
+            break;
+          case "ri_g_rematch":
+            if (s.phase !== "reveal") return;
+            s.sessionRematch.guest = msg.want;
+            hostTryFullSessionRematch(s);
             break;
           default:
             break;
@@ -478,6 +504,19 @@ export default function RankIt() {
     }
   }
 
+  function requestSessionRematch() {
+    if (!gs || gs.phase !== "reveal") return;
+    if (isHost) {
+      hostMutate((s) => {
+        if (s.phase !== "reveal") return;
+        s.sessionRematch.host = true;
+        hostTryFullSessionRematch(s);
+      });
+    } else {
+      sendNet({ t: "ri_g_rematch", want: true });
+    }
+  }
+
   const myName = gs ? (isHost ? gs.names.host : gs.names.guest) : "";
   const theirName = gs ? (isHost ? gs.names.guest : gs.names.host) : "";
 
@@ -637,14 +676,19 @@ export default function RankIt() {
                   <button type="button" className={styles.nextBtn} onClick={confirmNextRound}>
                     Next Round
                   </button>
-                  <button type="button" className={styles.leaveBtn} onClick={leaveSession}>
-                    Leave Match
-                  </button>
                 </div>
                 <div className={styles.monoNote}>
                   Both tap Next Round to continue · Host: {gs.nextRoundReady.host ? "✓" : "…"} · Guest:{" "}
                   {gs.nextRoundReady.guest ? "✓" : "…"}
                 </div>
+                <RematchBar
+                  iWantRematch={isHost ? gs.sessionRematch.host : gs.sessionRematch.guest}
+                  theyWantRematch={isHost ? gs.sessionRematch.guest : gs.sessionRematch.host}
+                  onRematch={requestSessionRematch}
+                  onLeave={leaveSession}
+                  opponentLeft={gs.opponentLeft}
+                  onReturnArcade={leaveSession}
+                />
               </div>
             ) : (
               <div className={styles.statusText}>Loading…</div>
