@@ -8,7 +8,7 @@ export type GFGameCardProps = {
   title: string;
   descriptor: string;
   category: string;
-  accent: "charades" | "staring" | "facepong" | "facecard" | "hockey" | "rankit";
+  accent: "charades" | "staring" | "facepong" | "facecard";
   playersOnline?: string;
 };
 

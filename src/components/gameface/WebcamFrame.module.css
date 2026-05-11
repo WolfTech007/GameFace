@@ -77,20 +77,6 @@
     0 0 56px var(--gf-accent-facecard-soft);
 }
 
-.accentHockey {
-  box-shadow:
-    0 0 0 1px rgba(52, 211, 153, 0.35),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 56px var(--gf-accent-hockey-soft);
-}
-
-.accentRankit {
-  box-shadow:
-    0 0 0 1px rgba(244, 114, 182, 0.35),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 56px var(--gf-accent-rankit-soft);
-}
-
 .cornerTL,
 .cornerTR,
 .cornerBL,

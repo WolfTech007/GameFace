@@ -1,7 +1,5 @@
-"use client";
+import { ArchivedGamePage } from "@/components/gameface/ArchivedGamePage";
 
-import RankIt from "@/components/RankIt";
-
-export default function RankItPage() {
-  return <RankIt />;
+export default function RankItArchivePage() {
+  return <ArchivedGamePage title="Rank It" />;
 }

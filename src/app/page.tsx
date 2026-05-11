@@ -65,20 +65,6 @@ export default function Page() {
             category="Best with friends"
             accent="facecard"
           />
-          <GFGameCard
-            href="/facehockey"
-            title="Face Hockey"
-            descriptor="Air hockey with your face — kinetic & loud."
-            category="Arcade"
-            accent="hockey"
-          />
-          <GFGameCard
-            href="/rankit"
-            title="Rank It"
-            descriptor="Rank the debate — reveal compatibility."
-            category="Social"
-            accent="rankit"
-          />
         </section>
 
         <section className={styles.section} id="friends" aria-labelledby="social-heading">

@@ -1,7 +1,5 @@
-"use client";
+import { ArchivedGamePage } from "@/components/gameface/ArchivedGamePage";
 
-import FaceHockey from "@/components/FaceHockey";
-
-export default function FaceHockeyPage() {
-  return <FaceHockey />;
+export default function FaceHockeyArchivePage() {
+  return <ArchivedGamePage title="Face Hockey" />;
 }

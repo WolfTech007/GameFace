@@ -26,12 +26,13 @@ To test on-device, run your dev server so it’s reachable on your LAN and open 
 
 ## Routes
 
-- `/`: **Face Arcade** (menu)
-- `/facepong`: **FacePong** (2-player webcam pong prototype)
+- `/`: **GameFace** home (game library)
+- `/charades`: **Charades** (muted-word guessing)
+- `/facepong`: **FacePong** (2-player webcam pong)
 - `/staring-contest`: **Staring Contest** (don’t blink — 1v1 via matchmaking + WebRTC)
-- `/facecard`: **FaceCard** (Heads Up–style guess-your-celebrity; 1v1 matchmaking + WebRTC)
+- `/facecard`: **Face Card** (guess who you are; 1v1 matchmaking + WebRTC)
 
-Archived (still reachable by URL): `/facebreaker`, `/rankit`.
+Archived (informative page only; queue APIs return **410**): `/facehockey`, `/rankit`. Legacy: `/facebreaker`.
 
 ## FaceBreaker (how to play)
 
@@ -62,7 +63,7 @@ Archived (still reachable by URL): `/facebreaker`, `/rankit`.
 
 ### Matchmaking note
 
-The queue APIs (`/api/staring-contest/queue`, `/api/facepong/queue`, `/api/facecard/queue`, `/api/rankit/queue`) keep separate **in-memory** waiting lists. That works on a **single** Node/dev server; on **serverless** with many instances, pair two browsers using **the same deployment** at the same time, or replace the queues with Redis/KV later.
+The queue APIs (`/api/staring-contest/queue`, `/api/facepong/queue`, `/api/facecard/queue`, `/api/lipreader/queue`, `/api/matchmaking/random`) keep separate **in-memory** waiting lists (archived modes respond with **410**). That works on a **single** Node/dev server; on **serverless** with many instances, pair two browsers using **the same deployment** at the same time, or replace the queues with Redis/KV later.
 
 ### Environment variables
 

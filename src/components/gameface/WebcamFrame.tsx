@@ -9,7 +9,7 @@ export type WebcamFrameProps = {
   variant?: WebcamFrameVariant;
   label?: string;
   /** Corner accent used by hero cards / library thumbnails (CSS variable name suffix optional). */
-  accent?: "you" | "opponent" | "charades" | "staring" | "facepong" | "facecard" | "hockey" | "rankit";
+  accent?: "you" | "opponent" | "charades" | "staring" | "facepong" | "facecard";
   children?: React.ReactNode;
   className?: string;
 };
@@ -21,8 +21,6 @@ const accentClass: Record<NonNullable<WebcamFrameProps["accent"]>, string> = {
   staring: styles.accentStaring,
   facepong: styles.accentFacepong,
   facecard: styles.accentFacecard,
-  hockey: styles.accentHockey,
-  rankit: styles.accentRankit,
 };
 
 export function WebcamFrame({
