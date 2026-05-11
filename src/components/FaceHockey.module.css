@@ -1,0 +1,210 @@
+.root {
+  width: 100vw;
+  height: 100svh;
+  background: #000;
+  overflow: hidden;
+  display: grid;
+  place-items: start center;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.frame {
+  --sq: min(100vw, calc(100svh / 2));
+  width: var(--sq);
+  height: calc(var(--sq) * 2);
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(120, 255, 220, 0.18);
+  background: #000;
+}
+
+.half {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: #000;
+}
+
+.topHalf {
+  top: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bottomHalf {
+  bottom: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.videoLocal {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  filter: saturate(1.06) contrast(1.05);
+}
+
+.videoRemote {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: rotate(180deg) scaleX(-1);
+  filter: saturate(1.06) contrast(1.05);
+}
+
+.canvasGuestRotate {
+  position: absolute;
+  inset: 0;
+  transform: rotate(180deg);
+  transform-origin: center center;
+  pointer-events: none;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.scoreHud {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(120, 255, 220, 0.25);
+  font-weight: 900;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.scoreTag {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+
+.scoreNum {
+  font-size: 20px;
+  color: #e8fff8;
+}
+
+.scoreSep {
+  opacity: 0.45;
+  font-size: 18px;
+}
+
+.debugHud {
+  position: absolute;
+  left: 6px;
+  bottom: 8px;
+  z-index: 30;
+  max-width: min(96%, 300px);
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(8, 22, 28, 0.88);
+  border: 1px solid rgba(120, 200, 255, 0.35);
+  font-size: 9px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: #dff;
+  pointer-events: none;
+  word-break: break-word;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 25;
+}
+
+.card {
+  width: calc(100% - 16px);
+  max-width: 420px;
+  border-radius: 18px;
+  background: rgba(0, 25, 28, 0.72);
+  border: 1px solid rgba(120, 255, 220, 0.2);
+  backdrop-filter: blur(14px);
+  padding: 18px 16px;
+  text-align: center;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 950;
+  letter-spacing: 0.3px;
+  color: #e8fff8;
+}
+
+.sub {
+  margin-top: 10px;
+  font-size: 14px;
+  opacity: 0.9;
+  line-height: 1.35;
+}
+
+.field {
+  margin-top: 14px;
+}
+
+.input {
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+}
+
+.button {
+  margin-top: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #5eead4, #14b8a6);
+  color: #031510;
+  font-weight: 950;
+  font-size: 16px;
+}
+
+.buttonSecondary {
+  margin-top: 12px;
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: 850;
+}
+
+.button:disabled {
+  opacity: 0.45;
+}
+
+.status {
+  margin-top: 12px;
+  font-size: 13px;
+  opacity: 0.85;
+}

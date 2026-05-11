@@ -18,18 +18,18 @@ export function drawFaceCardOverlay(
   const cx = nx * w;
   const cy = placement.ny * h;
 
-  const cardW = Math.min(w * 0.78, 300 * dpr);
-  const cardH = Math.max(36 * dpr, Math.min(h * 0.11, 52 * dpr));
+  const cardW = Math.min(w * 0.82, 320 * dpr);
+  const cardH = Math.max(40 * dpr, Math.min(h * 0.13, 56 * dpr));
   const x = cx - cardW / 2;
-  const y = cy - cardH - h * 0.025;
+  const y = cy - cardH - h * 0.028;
 
   const rx = 12 * dpr;
   ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.35)";
-  ctx.shadowBlur = 10 * dpr;
-  ctx.shadowOffsetY = 3 * dpr;
-  ctx.fillStyle = "rgba(255,255,255,0.94)";
-  ctx.strokeStyle = "rgba(0,0,0,0.12)";
+  ctx.shadowColor = "rgba(0,0,0,0.38)";
+  ctx.shadowBlur = 12 * dpr;
+  ctx.shadowOffsetY = 4 * dpr;
+  ctx.fillStyle = "rgba(254, 252, 232, 0.96)";
+  ctx.strokeStyle = "rgba(0,0,0,0.14)";
   ctx.lineWidth = Math.max(1, dpr);
   roundRect(ctx, x, y, cardW, cardH, rx);
   ctx.fill();

@@ -14,8 +14,8 @@ import { createNoseTracker } from "@/lib/faceTracking";
 
 const QUEUE_POLL_MS = 600;
 
-/** Canonical world / net debug overlay (Player A=host bottom, Player B=guest top). */
-const FP_WORLD_DEBUG = false;
+/** Temporary UI debug (presentation + sync); set false to hide. */
+const FP_UI_DEBUG = true;
 
 type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
@@ -141,10 +141,10 @@ export default function FacePong() {
   const lastRenderedBallRef = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
   const physicsRunningRef = useRef(false);
 
-  const [, setWorldDebugTick] = useState(0);
+  const [, setUiDebugTick] = useState(0);
   useEffect(() => {
-    if (!FP_WORLD_DEBUG) return;
-    const id = window.setInterval(() => setWorldDebugTick((x) => x + 1), 200);
+    if (!FP_UI_DEBUG) return;
+    const id = window.setInterval(() => setUiDebugTick((x) => x + 1), 200);
     return () => window.clearInterval(id);
   }, []);
 
@@ -489,7 +489,10 @@ export default function FacePong() {
       mirrorSelfie: true,
       onNoseX: (x01) => {
         localNoseXRef.current = x01;
-        sendToHost({ t: "paddle", x01 });
+        /* Presentation-only: guest canvas is CSS-rotated 180° so “you” appear at the bottom;
+           map visual nose X back to canonical world X for the host sim (world unchanged). */
+        const canonical = clamp(1 - x01, 0, 1);
+        sendToHost({ t: "paddle", x01: canonical });
       },
     });
 
@@ -668,49 +671,32 @@ export default function FacePong() {
   return (
     <main className={styles.root}>
       <div className={styles.frame}>
-        {role === "guest" ? (
-          <>
-            <div className={`${styles.half} ${styles.topHalf}`}>
-              <video
-                ref={localVideoRef}
-                className={styles.video}
-                playsInline
-                muted
-                autoPlay
-              />
-            </div>
-            <div className={`${styles.half} ${styles.bottomHalf}`}>
-              <video
-                ref={remoteVideoRef}
-                className={styles.video}
-                playsInline
-                autoPlay
-              />
-            </div>
-          </>
-        ) : (
-          <>
-            <div className={`${styles.half} ${styles.topHalf}`}>
-              <video
-                ref={remoteVideoRef}
-                className={styles.video}
-                playsInline
-                autoPlay
-              />
-            </div>
-            <div className={`${styles.half} ${styles.bottomHalf}`}>
-              <video
-                ref={localVideoRef}
-                className={styles.video}
-                playsInline
-                muted
-                autoPlay
-              />
-            </div>
-          </>
-        )}
+        {/* Same layout for host + guest: opponent top, self bottom (presentation only). */}
+        <div className={`${styles.half} ${styles.topHalf}`}>
+          <video
+            ref={remoteVideoRef}
+            className={styles.videoRemote}
+            playsInline
+            autoPlay
+          />
+        </div>
+        <div className={`${styles.half} ${styles.bottomHalf}`}>
+          <video
+            ref={localVideoRef}
+            className={styles.videoLocal}
+            playsInline
+            muted
+            autoPlay
+          />
+        </div>
 
-        <canvas ref={canvasRef} className={styles.canvas} />
+        {role === "guest" ? (
+          <div className={styles.canvasGuestRotate}>
+            <canvas ref={canvasRef} className={styles.canvas} />
+          </div>
+        ) : (
+          <canvas ref={canvasRef} className={styles.canvas} />
+        )}
 
         <div className={styles.hud}>
           <div className={styles.pill}>Rally: {rallyScore}</div>
@@ -719,37 +705,46 @@ export default function FacePong() {
           </div>
         </div>
 
-        {FP_WORLD_DEBUG ? (
+        {FP_UI_DEBUG ? (
           <div className={styles.debugWorld}>
-            <div>localUserId: {clientId}</div>
-            <div>roomCreatorId: {roomId ?? "—"}</div>
-            <div>amIHost: {role === "host" ? "true" : role === "guest" ? "false" : "—"}</div>
             <div>
-              myRole:{" "}
-              {role === "host" ? "Player A" : role === "guest" ? "Player B" : "—"}
+              myRole: {role === "host" ? "Player A" : role === "guest" ? "Player B" : "—"}
             </div>
-            <div>physicsRunning: {physicsRunningRef.current ? "true" : "false"}</div>
+            <div>
+              visualPerspective:{" "}
+              {role === "host"
+                ? "A: canonical canvas, local bottom"
+                : role === "guest"
+                  ? "B: canvas CSS rotate(180° only; paddle send = 1−visualX)"
+                  : "—"}
+            </div>
+            <div>
+              worldPaddleX (my canonical):{" "}
+              {role === "host"
+                ? hostStateRef.current.paddles.hostX.toFixed(4)
+                : role === "guest"
+                  ? hostStateRef.current.paddles.guestX.toFixed(4)
+                  : "—"}
+            </div>
+            <div>
+              localVisualPaddleX (nose, pre-map): {localNoseXRef.current.toFixed(4)}
+            </div>
+            <div>amIHost: {role === "host" ? "true" : role === "guest" ? "false" : "—"}</div>
+            <div>roomCreatorId: {roomId ?? "—"}</div>
             <div>
               ball x/y: {lastRenderedBallRef.current.x.toFixed(4)},{" "}
-              {lastRenderedBallRef.current.y.toFixed(4)} · vx/vy:{" "}
-              {lastRenderedBallRef.current.vx.toFixed(4)}, {lastRenderedBallRef.current.vy.toFixed(4)}
+              {lastRenderedBallRef.current.y.toFixed(4)}
             </div>
             <div>
-              last authoritative update (local perf ms):{" "}
+              last authoritative state (local perf ms):{" "}
               {role === "host"
                 ? lastSentAtRef.current?.toFixed(1) ?? "—"
                 : lastStateRecvAtRef.current?.toFixed(1) ?? "—"}
               {role === "guest" ? (
-                <>
-                  {" "}
-                  · host sentAt: {lastAuthSentAtFromHostRef.current?.toFixed(1) ?? "—"}
-                </>
+                <> · host sentAt: {lastAuthSentAtFromHostRef.current?.toFixed(1) ?? "—"}</>
               ) : null}
             </div>
-            <div>
-              remotePeerId: {remotePeerIdRef.current ?? "—"} · seq{" "}
-              {role === "host" ? hostSeqRef.current : lastGuestSeqRef.current}
-            </div>
+            <div className={styles.mono}>localUserId: {clientId}</div>
           </div>
         ) : null}
 

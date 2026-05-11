@@ -1,4 +1,4 @@
-/** Landmarker forehead-ish anchor (mesh index varies; 10 is stable on MediaPipe face_mesh-style layouts). */
+/** Glabella / upper forehead — stable on MediaPipe Face Landmarker topology. */
 const FOREHEAD_LM = 10;
 
 type Pt = { x: number; y: number };

@@ -71,3 +71,33 @@
   transform: translateY(1px);
 }
 
+.archive {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.72;
+}
+
+.archiveSummary {
+  cursor: pointer;
+  font-weight: 650;
+  user-select: none;
+}
+
+.archiveLinks {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.archiveLinks a {
+  color: rgba(103, 232, 255, 0.95);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.archiveSep {
+  opacity: 0.45;
+}
+

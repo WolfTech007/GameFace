@@ -3,7 +3,10 @@ import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
 export type NoseTracker = {
   start: (opts: {
     videoEl: HTMLVideoElement;
-    onNoseX: (x01: number) => void;
+    /** Legacy single-axis (FacePong). */
+    onNoseX?: (x01: number) => void;
+    /** Optional XY for games like FaceHockey (normalized 0–1). */
+    onNoseXY?: (x01: number, y01: number) => void;
     isPaused?: () => boolean;
     mirrorSelfie?: boolean;
   }) => () => void;
@@ -21,10 +24,11 @@ export async function createNoseTracker(): Promise<NoseTracker> {
   const landmarker = await createFaceLandmarker();
 
   return {
-    start({ videoEl, onNoseX, isPaused, mirrorSelfie = true }) {
+    start({ videoEl, onNoseX, onNoseXY, isPaused, mirrorSelfie = true }) {
       let raf: number | null = null;
       let lastDetectMs = 0;
-      let smoothed = 0.5;
+      let smoothedX = 0.5;
+      let smoothedY = 0.5;
 
       const step = () => {
         const now = performance.now();
@@ -37,9 +41,12 @@ export async function createNoseTracker(): Promise<NoseTracker> {
             const pts = faces[0];
             const nose = pts[1] ?? pts[4] ?? pts[0];
             if (nose) {
-              const raw = clamp(mirrorSelfie ? 1 - nose.x : nose.x, 0, 1);
-              smoothed = lerp(smoothed, raw, 0.45);
-              onNoseX(smoothed);
+              const rawX = clamp(mirrorSelfie ? 1 - nose.x : nose.x, 0, 1);
+              const rawY = clamp(mirrorSelfie ? nose.y : 1 - nose.y, 0, 1);
+              smoothedX = lerp(smoothedX, rawX, 0.42);
+              smoothedY = lerp(smoothedY, rawY, 0.42);
+              if (onNoseXY) onNoseXY(smoothedX, smoothedY);
+              else onNoseX?.(smoothedX);
             }
           }
         }

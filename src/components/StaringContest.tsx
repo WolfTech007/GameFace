@@ -10,7 +10,12 @@ import {
   waitForHostConnection,
 } from "@/lib/peerRoom";
 import { createStaringContestLandmarker } from "@/lib/staringContestFaceLandmarker";
-import { computeEyeAspectRatio, createBlinkSmoother } from "@/lib/eyeBlinkEar";
+import {
+  avgEyeBlinkBlendshapeScore,
+  computeEyeAspectRatio,
+  createBlinkSmoother,
+  createHighSignalSmoother,
+} from "@/lib/eyeBlinkEar";
 import type { StaringNetMsg } from "@/lib/staringContestProtocol";
 
 type Phase =
@@ -26,7 +31,7 @@ type Role = "host" | "guest";
 
 const GRACE_MS = 450;
 const FACE_LOSE_AFTER_MS = 1000;
-const BLINK_FRAMES = 5;
+const BLINK_FRAMES = 3;
 const QUEUE_POLL_MS = 600;
 
 function median(nums: number[]) {
@@ -91,6 +96,8 @@ export default function StaringContest() {
   const earCalibRef = useRef<number[]>([]);
   const earThresholdRef = useRef(0.22);
   const blinkSmootherRef = useRef(createBlinkSmoother(BLINK_FRAMES));
+  /** Blendshape “eyes closed” scores → streak above threshold (primary blink detector). */
+  const blinkBlendSmootherRef = useRef(createHighSignalSmoother(3, 0.38));
   const faceMissingSinceRef = useRef<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
 
@@ -236,13 +243,14 @@ export default function StaringContest() {
         if (msg.t === "game_go") {
           gameStartWallMsRef.current = msg.startWallMs;
           blinkSmootherRef.current.reset();
+          blinkBlendSmootherRef.current.reset();
           gameEndedRef.current = false;
           setCountdownN(null);
           const med = median(earCalibRef.current);
           if (med > 0) {
-            earThresholdRef.current = Math.max(0.11, Math.min(0.38, med * 0.55));
+            earThresholdRef.current = Math.max(0.10, Math.min(0.34, med * 0.62));
           } else {
-            earThresholdRef.current = 0.22;
+            earThresholdRef.current = 0.2;
           }
           const delay = Math.max(0, msg.startWallMs - Date.now());
           window.setTimeout(() => setPhase("playing"), delay);
@@ -348,7 +356,7 @@ export default function StaringContest() {
 
       const med = median(earCalibRef.current);
       if (med > 0) {
-        earThresholdRef.current = Math.max(0.11, Math.min(0.38, med * 0.55));
+        earThresholdRef.current = Math.max(0.10, Math.min(0.34, med * 0.62));
       }
 
       const startWallMs = Date.now() + GRACE_MS;
@@ -356,6 +364,7 @@ export default function StaringContest() {
       gameStartWallMsRef.current = startWallMs;
       gameEndedRef.current = false;
       blinkSmootherRef.current.reset();
+      blinkBlendSmootherRef.current.reset();
       faceMissingSinceRef.current = null;
       setCountdownN(null);
       await new Promise((r) => setTimeout(r, Math.max(0, startWallMs - Date.now())));
@@ -378,6 +387,11 @@ export default function StaringContest() {
       const ph = phaseRef.current;
       const now = performance.now();
 
+      // Timer uses wall clock only — must not depend on video readiness or landmark detection.
+      if (ph === "playing" && gameStartWallMsRef.current != null) {
+        setTimerSeconds(Math.max(0, (Date.now() - gameStartWallMsRef.current) / 1000));
+      }
+
       if (ph === "playing" || ph === "countdown") {
         if (!lm) lm = await createStaringContestLandmarker();
         const video = localVideoRef.current;
@@ -391,13 +405,8 @@ export default function StaringContest() {
           }
 
           if (phaseRef.current === "playing") {
-            // gameStartWallMsRef is wall-clock ms (Date.now) from host game_go — must not mix with performance.now().
             const wallNow = Date.now();
             const startWallMs = gameStartWallMsRef.current;
-
-            if (startWallMs != null) {
-              setTimerSeconds(Math.max(0, (wallNow - startWallMs) / 1000));
-            }
 
             if (!landmarks) {
               if (faceMissingSinceRef.current == null) faceMissingSinceRef.current = now;
@@ -412,14 +421,20 @@ export default function StaringContest() {
               setWarnFace(false);
 
               const graceActive = startWallMs != null && wallNow < startWallMs + GRACE_MS;
-              if (!graceActive && ear != null && hostRoleRef.current && !gameEndedRef.current) {
-                const { isLikelyBlink } = blinkSmootherRef.current.update(ear, {
-                  openThreshold: earThresholdRef.current,
-                });
-                if (isLikelyBlink) {
-                  if (hostRoleRef.current === "host") resolveLoss(true);
-                  else sendNet({ t: "blink", fromHost: false, atMs: Date.now() });
-                }
+              const blendAvg = avgEyeBlinkBlendshapeScore(res.faceBlendshapes);
+              const blendBlink = blinkBlendSmootherRef.current.update(blendAvg);
+              const earBlink = blinkSmootherRef.current.update(ear, {
+                openThreshold: earThresholdRef.current,
+              });
+
+              if (
+                !graceActive &&
+                hostRoleRef.current &&
+                !gameEndedRef.current &&
+                (blendBlink || earBlink.isLikelyBlink)
+              ) {
+                if (hostRoleRef.current === "host") resolveLoss(true);
+                else sendNet({ t: "blink", fromHost: false, atMs: Date.now() });
               }
             }
           }
@@ -467,6 +482,7 @@ export default function StaringContest() {
     earThresholdRef.current = 0.22;
     earCalibRef.current = [];
     blinkSmootherRef.current.reset();
+    blinkBlendSmootherRef.current.reset();
     faceMissingSinceRef.current = null;
     gameStartWallMsRef.current = null;
   }

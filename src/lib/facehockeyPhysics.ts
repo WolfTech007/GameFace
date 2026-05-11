@@ -1,0 +1,164 @@
+import type { FaceHockeyNetState } from "@/lib/facehockeyProtocol";
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/** Normalized table constants (+y down). */
+export const FH = {
+  WALL_INSET: 0.022,
+  A_Y_MIN: 0.54,
+  A_Y_MAX: 0.92,
+  B_Y_MIN: 0.08,
+  B_Y_MAX: 0.46,
+  X_MIN: 0.08,
+  X_MAX: 0.92,
+  PUCK_R: 0.018,
+  MALLET_R: 0.054,
+  GOAL_HALF_W: 0.11,
+  /** Puck center crosses into slot → goal */
+  TOP_GOAL_Y: 0.032,
+  BOT_GOAL_Y: 0.968,
+  FRICTION: 0.9935,
+  MAX_SPEED: 0.88,
+  RALLY_RAMP_S: 48,
+  MAX_SPEED_MULT: 1.55,
+  MALLET_PUSH: 0.38,
+  RESTITUTION_WALL: 0.94,
+  RESTITUTION_MALLET: 1.06,
+};
+
+function length(x: number, y: number) {
+  return Math.hypot(x, y);
+}
+
+function normalize(x: number, y: number): { x: number; y: number } {
+  const L = length(x, y) || 1;
+  return { x: x / L, y: y / L };
+}
+
+/**
+ * Host-only integration. Mutates `s.puck` and mallet copies on `s`.
+ * Does **not** mutate scores — caller applies goals.
+ */
+export function hostStepPhysics(
+  s: FaceHockeyNetState,
+  dt: number,
+  malletA: { x: number; y: number },
+  malletB: { x: number; y: number },
+  prevA: { x: number; y: number },
+  prevB: { x: number; y: number },
+  rallyElapsedSec: number,
+): { goal: "A" | "B" | null } {
+  s.malletA = { ...malletA };
+  s.malletB = { ...malletB };
+
+  if (s.phase !== "playing" || s.puckFrozen) {
+    return { goal: null };
+  }
+
+  let { x, y, vx, vy } = s.puck;
+  const pr = FH.PUCK_R;
+  const wi = FH.WALL_INSET;
+
+  const speedMult = clamp(
+    1 + (rallyElapsedSec / FH.RALLY_RAMP_S) * (FH.MAX_SPEED_MULT - 1),
+    1,
+    FH.MAX_SPEED_MULT,
+  );
+  let maxSp = FH.MAX_SPEED * speedMult;
+
+  vx *= Math.pow(FH.FRICTION, dt * 60);
+  vy *= Math.pow(FH.FRICTION, dt * 60);
+
+  let sp = length(vx, vy);
+  if (sp > maxSp) {
+    const sc = maxSp / sp;
+    vx *= sc;
+    vy *= sc;
+    sp = maxSp;
+  }
+
+  x += vx * dt;
+  y += vy * dt;
+
+  const goalMouth = (gx: number) => Math.abs(gx - 0.5) <= FH.GOAL_HALF_W + pr * 0.5;
+
+  // Goals (before wall bounce)
+  if (y < FH.TOP_GOAL_Y && goalMouth(x)) {
+    return { goal: "A" };
+  }
+  if (y > FH.BOT_GOAL_Y && goalMouth(x)) {
+    return { goal: "B" };
+  }
+
+  // Side walls
+  if (x < wi + pr) {
+    x = wi + pr;
+    vx = Math.abs(vx) * FH.RESTITUTION_WALL;
+  } else if (x > 1 - wi - pr) {
+    x = 1 - wi - pr;
+    vx = -Math.abs(vx) * FH.RESTITUTION_WALL;
+  }
+
+  const goalL = 0.5 - FH.GOAL_HALF_W;
+  const goalR = 0.5 + FH.GOAL_HALF_W;
+
+  // Top rail (outside goal mouth)
+  if (y < wi + pr && !(x > goalL - pr && x < goalR + pr)) {
+    y = wi + pr;
+    vy = Math.abs(vy) * FH.RESTITUTION_WALL;
+  }
+
+  // Bottom rail (outside goal mouth)
+  if (y > 1 - wi - pr && !(x > goalL - pr && x < goalR + pr)) {
+    y = 1 - wi - pr;
+    vy = -Math.abs(vy) * FH.RESTITUTION_WALL;
+  }
+
+  const collide = (mx: number, my: number, mvx: number, mvy: number) => {
+    const dx = x - mx;
+    const dy = y - my;
+    const dist = length(dx, dy);
+    const minD = FH.MALLET_R + pr;
+    if (dist >= minD || dist < 1e-6) return;
+    const n = normalize(dx, dy);
+    const overlap = minD - dist;
+    x += n.x * overlap;
+    y += n.y * overlap;
+    const rvx = vx - mvx;
+    const rvy = vy - mvy;
+    const vn = rvx * n.x + rvy * n.y;
+    if (vn >= 0) return;
+    const impulse = -(1 + FH.RESTITUTION_MALLET) * vn;
+    vx += impulse * n.x * 0.55 + mvx * FH.MALLET_PUSH * 0.025;
+    vy += impulse * n.y * 0.55 + mvy * FH.MALLET_PUSH * 0.025;
+  };
+
+  const dtx = 1 / Math.max(dt, 1 / 120);
+  collide(malletA.x, malletA.y, (malletA.x - prevA.x) * dtx, (malletA.y - prevA.y) * dtx);
+  collide(malletB.x, malletB.y, (malletB.x - prevB.x) * dtx, (malletB.y - prevB.y) * dtx);
+
+  sp = length(vx, vy);
+  if (sp > maxSp) {
+    const sc = maxSp / sp;
+    vx *= sc;
+    vy *= sc;
+  }
+
+  s.puck = { x, y, vx, vy };
+  return { goal: null };
+}
+
+export function hostMalletFromNose(nx: number, ny: number): { x: number; y: number } {
+  const x = clamp(nx, FH.X_MIN, FH.X_MAX);
+  const y = clamp(FH.A_Y_MAX - ny * (FH.A_Y_MAX - FH.A_Y_MIN), FH.A_Y_MIN, FH.A_Y_MAX);
+  return { x, y };
+}
+
+export function guestMalletFromNoseVisual(nx: number, ny: number): { x: number; y: number } {
+  const xv = clamp(1 - nx, 0, 1);
+  const x = clamp(xv, FH.X_MIN, FH.X_MAX);
+  const y = clamp(FH.B_Y_MIN + ny * (FH.B_Y_MAX - FH.B_Y_MIN), FH.B_Y_MIN, FH.B_Y_MAX);
+  return { x, y };
+}

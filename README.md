@@ -27,11 +27,11 @@ To test on-device, run your dev server so it’s reachable on your LAN and open 
 ## Routes
 
 - `/`: **Face Arcade** (menu)
-- `/facebreaker`: **FaceBreaker** (brick breaker controlled by nose)
 - `/facepong`: **FacePong** (2-player webcam pong prototype)
 - `/staring-contest`: **Staring Contest** (don’t blink — 1v1 via matchmaking + WebRTC)
 - `/facecard`: **FaceCard** (Heads Up–style guess-your-celebrity; 1v1 matchmaking + WebRTC)
-- `/rankit`: **Rank It** (same-time rankings vs a stranger; 1v1 matchmaking + WebRTC)
+
+Archived (still reachable by URL): `/facebreaker`, `/rankit`.
 
 ## FaceBreaker (how to play)
 

@@ -3,6 +3,8 @@
  * Uses six points per eye (standard blink-detection layout).
  */
 
+import type { Classifications } from "@mediapipe/tasks-vision";
+
 export type NormPoint = { x: number; y: number; z?: number };
 
 // Indices for MediaPipe Face Mesh–compatible topology (478 landmarks).
@@ -55,6 +57,43 @@ export function createBlinkSmoother(consecutiveNeeded = 5) {
     },
     reset() {
       lowFrames = 0;
+    },
+  };
+}
+
+/** MediaPipe Face Landmarker blendshape names vary; match eye blink channels flexibly. */
+export function avgEyeBlinkBlendshapeScore(blend: Classifications[] | undefined): number | null {
+  const head = blend?.[0];
+  if (!head?.categories?.length) return null;
+  let sum = 0;
+  let n = 0;
+  for (const cat of head.categories) {
+    const name = (cat.categoryName ?? "").toLowerCase();
+    const isEyeBlink =
+      name.includes("eyeblink") || (name.includes("eye") && name.includes("blink"));
+    if (isEyeBlink) {
+      sum += cat.score;
+      n += 1;
+    }
+  }
+  return n > 0 ? sum / n : null;
+}
+
+/** Fire when value stays above `threshold` for `consecutiveNeeded` frames (for blendshape “eyes closed” scores). */
+export function createHighSignalSmoother(consecutiveNeeded: number, threshold: number) {
+  let streak = 0;
+  return {
+    update(value: number | null): boolean {
+      if (value == null) {
+        streak = 0;
+        return false;
+      }
+      if (value >= threshold) streak += 1;
+      else streak = 0;
+      return streak >= consecutiveNeeded;
+    },
+    reset() {
+      streak = 0;
     },
   };
 }

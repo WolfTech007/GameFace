@@ -1,0 +1,308 @@
+.root {
+  width: 100vw;
+  min-height: 100svh;
+  background: radial-gradient(120% 80% at 50% 20%, #1a1033 0%, #070510 55%);
+  overflow-x: hidden;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.frame {
+  --sq: min(100vw, calc(100svh - 160px));
+  width: min(100%, 520px);
+  margin: 0 auto;
+  position: relative;
+}
+
+.gridsplit {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 200, 120, 0.22);
+  box-shadow:
+    0 0 40px rgba(255, 120, 200, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.countdownOverlayFull {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.half {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: #000;
+  overflow: hidden;
+}
+
+.halfTop {
+  border-bottom: 2px solid rgba(255, 255, 255, 0.12);
+}
+
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.videoRemote {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.labelBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 10px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  z-index: 2;
+}
+
+.labelTop {
+  top: 0;
+  bottom: auto;
+  background: linear-gradient(rgba(0, 0, 0, 0.65), transparent);
+}
+
+.hudRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 18px;
+  margin-top: 14px;
+  padding: 0 8px 12px;
+}
+
+.rolePill {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-weight: 900;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 220, 160, 0.35);
+  color: #ffe8f8;
+}
+
+.audioHint {
+  flex: 1 1 100%;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 750;
+  color: #c9ffd8;
+  line-height: 1.35;
+}
+
+.timerBig {
+  font-size: clamp(36px, 10vw, 52px);
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 2px 18px rgba(255, 120, 200, 0.45);
+}
+
+.guessesBig {
+  font-size: 22px;
+  font-weight: 900;
+  color: #ffd28a;
+}
+
+.countdownOverlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 8;
+  pointer-events: none;
+}
+
+.countdownNum {
+  font-size: clamp(64px, 22vw, 120px);
+  font-weight: 950;
+  color: #fff;
+  text-shadow: 0 0 40px rgba(255, 100, 200, 0.8);
+}
+
+.wordReveal {
+  margin-top: 12px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: rgba(40, 20, 60, 0.85);
+  border: 1px solid rgba(255, 180, 255, 0.35);
+  text-align: center;
+}
+
+.wordRevealLabel {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  color: #ffc8ff;
+}
+
+.wordRevealText {
+  margin-top: 6px;
+  font-size: clamp(26px, 7vw, 36px);
+  font-weight: 950;
+  color: #fff;
+}
+
+.guesserPrompt {
+  margin-top: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #e8e0ff;
+  text-align: center;
+  padding: 0 10px;
+}
+
+.actionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.button {
+  padding: 14px 22px;
+  border: 0;
+  border-radius: 16px;
+  font-weight: 950;
+  font-size: 16px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #f472b6, #db2777);
+  color: #fff;
+}
+
+.buttonSecondary {
+  padding: 12px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 800;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 40;
+}
+
+.card {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 20px;
+  padding: 20px 18px;
+  background: rgba(25, 15, 45, 0.92);
+  border: 1px solid rgba(255, 200, 255, 0.2);
+  backdrop-filter: blur(12px);
+}
+
+.cardTitle {
+  font-size: 26px;
+  font-weight: 950;
+  color: #fff;
+  text-align: center;
+}
+
+.field {
+  margin-top: 14px;
+}
+
+.input {
+  width: 100%;
+  padding: 14px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 17px;
+}
+
+.modalTitle {
+  font-size: 22px;
+  font-weight: 900;
+  margin-bottom: 12px;
+  color: #fff;
+}
+
+.status {
+  margin-top: 10px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+}
+
+.resultCard {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.resultHeadline {
+  font-size: 28px;
+  font-weight: 950;
+  color: #86efac;
+}
+
+.resultMuted {
+  margin-top: 10px;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.feedbackBanner {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(180, 40, 80, 0.35);
+  border: 1px solid rgba(255, 120, 160, 0.45);
+  color: #ffe4ec;
+  font-weight: 750;
+  text-align: center;
+}
+
+.headerMini {
+  text-align: center;
+  padding: 8px 12px 0;
+}
+
+.headerMiniTitle {
+  font-size: 22px;
+  font-weight: 950;
+  color: #fff;
+}
+
+.headerMiniSub {
+  font-size: 13px;
+  opacity: 0.75;
+  color: #e9d5ff;
+  margin-top: 4px;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import styles from "./FaceCard.module.css";
 import {
   connectGuestToHost,
@@ -10,7 +10,7 @@ import {
   waitForHostConnection,
 } from "@/lib/peerRoom";
 import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
-import { foreheadFromLandmarks } from "@/lib/facecardForehead";
+import { foreheadFromLandmarks, type ForeheadPlacement } from "@/lib/facecardForehead";
 import { drawFaceCardOverlay } from "@/lib/facecardDraw";
 import { POP_CULTURE_DECK, pickTwoDistinctRandom } from "@/lib/facecardDeck";
 import { guessMatchesSecret } from "@/lib/facecardGuess";
@@ -21,6 +21,21 @@ type Phase = "intro" | "queue" | "peer_setup" | "lobby" | "playing" | "ended";
 type Role = "host" | "guest";
 
 const QUEUE_POLL_MS = 600;
+
+/** Exponential smoothing so note cards stick to the forehead like a lightweight AR filter. */
+function smoothForehead(
+  store: MutableRefObject<{ nx: number; ny: number }>,
+  raw: ForeheadPlacement,
+  alpha: number,
+): ForeheadPlacement {
+  if (raw.kind === "fallback") {
+    store.current = { nx: raw.nx, ny: raw.ny };
+    return raw;
+  }
+  store.current.nx += (raw.nx - store.current.nx) * alpha;
+  store.current.ny += (raw.ny - store.current.ny) * alpha;
+  return { kind: "tracked", nx: store.current.nx, ny: store.current.ny };
+}
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -118,6 +133,9 @@ export default function FaceCard() {
 
   /** Label drawn on remote feed (guest receives from host; host sets from guestSecretRef). */
   const remoteCardLabelRef = useRef<string>("");
+
+  const overlaySmoothLocalRef = useRef({ nx: 0.5, ny: 0.28 });
+  const overlaySmoothRemoteRef = useRef({ nx: 0.5, ny: 0.28 });
 
   const gameEndedRef = useRef(false);
 
@@ -523,6 +541,13 @@ export default function FaceCard() {
   }
 
   useEffect(() => {
+    if (phase !== "playing") {
+      overlaySmoothLocalRef.current = { nx: 0.5, ny: 0.28 };
+      overlaySmoothRemoteRef.current = { nx: 0.5, ny: 0.28 };
+    }
+  }, [phase]);
+
+  useEffect(() => {
     if (phase !== "playing") return;
     const id = window.setInterval(() => {
       const t0 = startWallMsRef.current;
@@ -580,11 +605,12 @@ export default function FaceCard() {
           const res = lm.detectForVideo(remoteV, now);
           const landmarks = res.faceLandmarks?.[0];
           const placement = foreheadFromLandmarks(landmarks as { x: number; y: number }[] | undefined);
+          const smoothed = smoothForehead(overlaySmoothRemoteRef, placement, 0.44);
           const label =
             roleRef.current === "host"
               ? guestSecretRef.current ?? ""
               : remoteCardLabelRef.current ?? "";
-          drawFaceCardOverlay(ctx, sz.cssW, sz.cssH, sz.dpr, placement, label || null, false);
+          drawFaceCardOverlay(ctx, sz.cssW, sz.cssH, sz.dpr, smoothed, label || null, false);
         }
       }
 
@@ -595,7 +621,8 @@ export default function FaceCard() {
           const res = lm.detectForVideo(localV, now);
           const landmarks = res.faceLandmarks?.[0];
           const placement = foreheadFromLandmarks(landmarks as { x: number; y: number }[] | undefined);
-          drawFaceCardOverlay(ctx, sz.cssW, sz.cssH, sz.dpr, placement, null, true);
+          const smoothed = smoothForehead(overlaySmoothLocalRef, placement, 0.44);
+          drawFaceCardOverlay(ctx, sz.cssW, sz.cssH, sz.dpr, smoothed, null, true);
         }
       }
 

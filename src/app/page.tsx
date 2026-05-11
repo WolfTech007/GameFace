@@ -11,17 +11,25 @@ export default function Page() {
 
       <div className={styles.grid}>
         <section className={styles.card}>
-          <div className={styles.cardTitle}>FaceBreaker</div>
-          <div className={styles.cardDesc}>Break bricks with your nose.</div>
-          <Link className={styles.playButton} href="/facebreaker">
+          <div className={styles.cardTitle}>FacePong</div>
+          <div className={styles.cardDesc}>1v1 webcam pong.</div>
+          <Link className={styles.playButton} href="/facepong">
             Play
           </Link>
         </section>
 
         <section className={styles.card}>
-          <div className={styles.cardTitle}>FacePong</div>
-          <div className={styles.cardDesc}>1v1 webcam pong.</div>
-          <Link className={styles.playButton} href="/facepong">
+          <div className={styles.cardTitle}>FaceHockey</div>
+          <div className={styles.cardDesc}>Air hockey with your face.</div>
+          <Link className={styles.playButton} href="/facehockey">
+            Play
+          </Link>
+        </section>
+
+        <section className={styles.card}>
+          <div className={styles.cardTitle}>Lip Reader</div>
+          <div className={styles.cardDesc}>Guess the muted word.</div>
+          <Link className={styles.playButton} href="/lipreader">
             Play
           </Link>
         </section>
@@ -41,15 +49,16 @@ export default function Page() {
             Play
           </Link>
         </section>
-
-        <section className={styles.card}>
-          <div className={styles.cardTitle}>Rank It</div>
-          <div className={styles.cardDesc}>Rank. Reveal. Argue.</div>
-          <Link className={styles.playButton} href="/rankit">
-            Play
-          </Link>
-        </section>
       </div>
+
+      <details className={styles.archive}>
+        <summary className={styles.archiveSummary}>Archived games</summary>
+        <div className={styles.archiveLinks}>
+          <Link href="/facebreaker">FaceBreaker</Link>
+          <span className={styles.archiveSep}>·</span>
+          <Link href="/rankit">Rank It</Link>
+        </div>
+      </details>
     </main>
   );
 }
