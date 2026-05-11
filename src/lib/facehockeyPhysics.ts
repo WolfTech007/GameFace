@@ -23,6 +23,8 @@ export const FH = {
   CORNER_FILLET_R: 0.045,
   /** Height / width of playfield (canvas); collision uses min-dimension radii like the draw loop */
   PLAYFIELD_H_OVER_W: 2,
+  /** Prevent puck from becoming "dead" after mallet hits */
+  MIN_SPEED_AFTER_HIT: 0.22,
   FRICTION: 0.99585,
   MAX_SPEED: 1.1,
   RALLY_RAMP_S: 48,
@@ -73,6 +75,7 @@ export function hostStepPhysics(
   }
 
   const wy = playfieldHOverW;
+  const eps = 0.0004;
 
   let { x, y, vx, vy } = s.puck;
   const pr = FH.PUCK_R;
@@ -111,10 +114,10 @@ export function hostStepPhysics(
 
   // Side walls
   if (x < wi + pr) {
-    x = wi + pr;
+    x = wi + pr + eps;
     vx = Math.abs(vx) * FH.RESTITUTION_WALL;
   } else if (x > 1 - wi - pr) {
-    x = 1 - wi - pr;
+    x = 1 - wi - pr - eps;
     vx = -Math.abs(vx) * FH.RESTITUTION_WALL;
   }
 
@@ -123,13 +126,13 @@ export function hostStepPhysics(
 
   // Top rail (outside goal mouth)
   if (y < wi + pr && !(x > goalL - pr && x < goalR + pr)) {
-    y = wi + pr;
+    y = wi + pr + eps;
     vy = Math.abs(vy) * FH.RESTITUTION_WALL;
   }
 
   // Bottom rail (outside goal mouth)
   if (y > 1 - wi - pr && !(x > goalL - pr && x < goalR + pr)) {
-    y = 1 - wi - pr;
+    y = 1 - wi - pr - eps;
     vy = -Math.abs(vy) * FH.RESTITUTION_WALL;
   }
 
@@ -199,6 +202,14 @@ export function hostStepPhysics(
     const impulse = -(1 + FH.RESTITUTION_MALLET) * vn;
     vx += impulse * n.x * 0.55 + mvx * FH.MALLET_PUSH * 0.025;
     vy += impulse * n.y * 0.55 + mvy * FH.MALLET_PUSH * 0.025;
+
+    // Failsafe: never let a mallet hit produce a "dead" puck that can be corner-trapped.
+    const sp2 = vx * vx + vy * vy;
+    const minSp = FH.MIN_SPEED_AFTER_HIT;
+    if (sp2 < minSp * minSp) {
+      vx = n.x * minSp;
+      vy = n.y * minSp;
+    }
   };
 
   const dtx = 1 / Math.max(dt, 1 / 120);
@@ -238,21 +249,44 @@ export function hostStepPhysics(
 }
 
 export function hostMalletFromNose(nx: number, ny: number): { x: number; y: number } {
-  const x = clamp(nx, FH.X_MIN, FH.X_MAX);
+  return hostMalletFromNoseInBounds(nx, ny, {
+    xMin: FH.X_MIN,
+    xMax: FH.X_MAX,
+    yMin: FH.A_Y_MIN,
+    yMax: FH.A_Y_MAX,
+  });
+}
+
+export function hostMalletFromNoseInBounds(
+  nx: number,
+  ny: number,
+  b: { xMin: number; xMax: number; yMin: number; yMax: number },
+): { x: number; y: number } {
+  const x = clamp(nx, b.xMin, b.xMax);
   /** Nose lower on screen (larger ny, +y down in world) → mallet moves toward bottom goal. */
   const nyTip = clamp(ny + NOSE_TIP_Y_OFFSET, 0, 1);
-  const y = clamp(FH.A_Y_MIN + nyTip * (FH.A_Y_MAX - FH.A_Y_MIN), FH.A_Y_MIN, FH.A_Y_MAX);
+  const y = clamp(b.yMin + nyTip * (b.yMax - b.yMin), b.yMin, b.yMax);
   return { x, y };
 }
 
-export function guestMalletFromNoseVisual(nx: number, ny: number): { x: number; y: number } {
+export function guestMalletFromNoseVisual(
+  nx: number,
+  ny: number,
+  b?: { xMin: number; xMax: number; yMin: number; yMax: number; centerY?: number },
+): { x: number; y: number } {
   const xv = clamp(1 - nx, 0, 1);
-  const x = clamp(xv, FH.X_MIN, FH.X_MAX);
+  const xMin = b?.xMin ?? FH.X_MIN;
+  const xMax = b?.xMax ?? FH.X_MAX;
+  const yMin = b?.yMin ?? FH.B_Y_MIN;
+  const yMax = b?.yMax ?? FH.B_Y_MAX;
+  const centerY = b?.centerY ?? 0.5;
+
+  const x = clamp(xv, xMin, xMax);
   /**
    * Align with Player A: nose lower in selfie (larger ny) → canonical +y (mallet toward center).
    * Player B’s overlay is CSS-rotated 180°; invert ny vs the naive linear map so vertical tracks nose.
    */
   const nyTip = clamp(ny + NOSE_TIP_Y_OFFSET, 0, 1);
-  const y = clamp(FH.B_Y_MAX - nyTip * (FH.B_Y_MAX - FH.B_Y_MIN), FH.B_Y_MIN, FH.B_Y_MAX);
+  const y = clamp(yMax - nyTip * (yMax - yMin), yMin, Math.min(yMax, centerY));
   return { x, y };
 }
