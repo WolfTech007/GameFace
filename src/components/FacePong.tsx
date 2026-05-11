@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import styles from "./FacePong.module.css";
 import {
   connectGuestToHost,
@@ -68,15 +68,18 @@ function makeInitialNetState(): FacePongNetState {
     rallyScore: 0,
     ball: { x: 0.5, y: 0.5, vx: 0.0, vy: 0.0 },
     paddles: { hostX: 0.5, guestX: 0.5 },
+    ready: { host: false, guest: false },
   };
 }
 
 function cloneNetState(s: FacePongNetState): FacePongNetState {
+  const r = s.ready ?? { host: false, guest: false };
   return {
     phase: s.phase,
     rallyScore: s.rallyScore,
     ball: { ...s.ball },
     paddles: { ...s.paddles },
+    ready: { ...r },
   };
 }
 
@@ -142,6 +145,8 @@ export default function FacePong() {
   const remotePeerIdRef = useRef<string | null>(null);
   const lastRenderedBallRef = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
   const physicsRunningRef = useRef(false);
+
+  const [, bumpLobby] = useReducer((x: number) => x + 1, 0);
 
   const [, setUiDebugTick] = useState(0);
   useEffect(() => {
@@ -262,6 +267,15 @@ export default function FacePong() {
     setRallyScore(0);
   }
 
+  function hostTryStartWhenBothReady() {
+    if (roleRef.current !== "host") return;
+    const s = hostStateRef.current;
+    if (s.phase !== "lobby") return;
+    if (s.ready.host && s.ready.guest) {
+      hostStartGame();
+    }
+  }
+
   function hostStartGame() {
     const s = hostStateRef.current;
     s.phase = "playing";
@@ -270,8 +284,21 @@ export default function FacePong() {
     s.paddles.hostX = smoothedLocalPaddleRef.current;
     s.paddles.guestX = guestPaddleXRef.current;
     hostStartedAtRef.current = nowMs();
+    s.ready = { host: false, guest: false };
     broadcastAuthoritativeState();
     setUiPhase("playing");
+  }
+
+  function toggleLobbyReady() {
+    if (!opponentConnected || uiPhaseRef.current !== "lobby") return;
+    if (role === "host") {
+      hostStateRef.current.ready.host = !hostStateRef.current.ready.host;
+      broadcastAuthoritativeState();
+      bumpLobby();
+      hostTryStartWhenBothReady();
+    } else if (role === "guest") {
+      sendToHost({ t: "ready", ready: !hostStateRef.current.ready.guest });
+    }
   }
 
   function hostTick(dt: number) {
@@ -481,7 +508,14 @@ export default function FacePong() {
 
     conn.on("data", (raw: any) => {
       const msg = raw as GuestToHostMsg;
-      if (msg.t === "paddle") guestPaddleXRef.current = clamp(msg.x01, 0, 1);
+      if (msg.t === "paddle") {
+        guestPaddleXRef.current = clamp(msg.x01, 0, 1);
+      } else if (msg.t === "ready") {
+        hostStateRef.current.ready.guest = msg.ready;
+        broadcastAuthoritativeState();
+        bumpLobby();
+        hostTryStartWhenBothReady();
+      }
     });
 
     conn.on("open", () => {
@@ -535,6 +569,8 @@ export default function FacePong() {
         setRallyScore(msg.state.rallyScore);
         if (msg.state.phase === "playing") setUiPhase("playing");
         if (msg.state.phase === "gameover") setUiPhase("gameover");
+        if (msg.state.phase === "lobby") setUiPhase("lobby");
+        bumpLobby();
       }
     });
 
@@ -678,7 +714,6 @@ export default function FacePong() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, opponentConnected]);
 
-  const canStart = role === "host" && opponentConnected && uiPhase === "lobby";
   const showMenu = uiPhase === "menu";
   const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
@@ -815,14 +850,33 @@ export default function FacePong() {
           <div className={styles.overlay}>
             <div className={styles.card}>
               <div className={styles.title}>FacePong Lobby</div>
-              <div className={styles.sub}>
-                {opponentConnected ? "Opponent connected." : "Waiting for opponent…"}
+              <div className={styles.sub}>Ready up to start game.</div>
+              <div className={styles.subMuted}>
+                {opponentConnected
+                  ? role === "host"
+                    ? hostStateRef.current.ready.guest
+                      ? "Opponent is ready."
+                      : "Waiting for opponent to ready up…"
+                    : hostStateRef.current.ready.host
+                      ? "Opponent is ready."
+                      : "Waiting for opponent to ready up…"
+                  : "Waiting for opponent…"}
               </div>
 
               <div className={styles.row}>
-                {canStart ? (
-                  <button className={styles.button} onClick={hostStartGame}>
-                    Start Game
+                {opponentConnected ? (
+                  <button
+                    type="button"
+                    className={
+                      (role === "host" ? hostStateRef.current.ready.host : hostStateRef.current.ready.guest)
+                        ? styles.buttonReady
+                        : styles.button
+                    }
+                    onClick={toggleLobbyReady}
+                  >
+                    {(role === "host" ? hostStateRef.current.ready.host : hostStateRef.current.ready.guest)
+                      ? "READY ✓"
+                      : "READY"}
                   </button>
                 ) : null}
               </div>

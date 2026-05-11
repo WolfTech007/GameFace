@@ -14,13 +14,17 @@ export type HostToGuestMsg =
   | { t: "state"; state: FacePongNetState; seq: number; sentAt: number }
   | { t: "hello"; roomId: string };
 
-export type GuestToHostMsg = { t: "paddle"; x01: number } | { t: "ready" };
+export type GuestToHostMsg =
+  | { t: "paddle"; x01: number }
+  | { t: "ready"; ready: boolean };
 
 export type FacePongNetState = {
   phase: "lobby" | "playing" | "gameover";
   rallyScore: number;
   ball: { x: number; y: number; vx: number; vy: number };
   paddles: { hostX: number; guestX: number };
+  /** Lobby only — both must be true for host to start (synced from host). */
+  ready: { host: boolean; guest: boolean };
 };
 
 export type PeerRoom = {

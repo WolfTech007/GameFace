@@ -200,6 +200,13 @@
   line-height: 1.3;
 }
 
+.subMuted {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.78;
+  line-height: 1.35;
+}
+
 .row {
   margin-top: 14px;
   display: grid;
@@ -221,6 +228,16 @@
   background: linear-gradient(180deg, #67e8ff, #2fb8ff);
   color: #00131c;
   font-weight: 900;
+}
+
+.buttonReady {
+  width: 100%;
+  padding: 13px 14px;
+  border: 0;
+  border-radius: 16px;
+  font-weight: 900;
+  background: linear-gradient(180deg, #4ade80, #22c55e);
+  color: #052e14;
 }
 
 .buttonSecondary {
