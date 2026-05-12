@@ -110,7 +110,7 @@ export type FacePongProps = {
 
 export default function FacePong({
   autoJoinPublicQueue = false,
-  fromRandomMatch: _fromRandomMatch = false,
+  fromRandomMatch = false,
   introHref,
 }: FacePongProps) {
   const router = useRouter();
@@ -123,15 +123,19 @@ export default function FacePong({
   /** Size canvas from frame rect on both roles so guest rotation never skews aspect ratio. */
   const frameRef = useRef<HTMLDivElement | null>(null);
 
-  const [uiPhase, setUiPhase] = useState<UiPhase>(() => (autoJoinPublicQueue ? "matchmaking" : "menu"));
-  const uiPhaseRef = useRef<UiPhase>("menu");
+  /** Random universal match lands with `?gf=1` only — match is already resolved; skip menu flash. */
+  const initialPhase: UiPhase = autoJoinPublicQueue || fromRandomMatch ? "matchmaking" : "menu";
+  const [uiPhase, setUiPhase] = useState<UiPhase>(initialPhase);
+  const uiPhaseRef = useRef<UiPhase>(initialPhase);
   useEffect(() => {
     uiPhaseRef.current = uiPhase;
   }, [uiPhase]);
 
   const [role, setRole] = useState<Role | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("Idle");
+  const [status, setStatus] = useState<string>(() =>
+    autoJoinPublicQueue ? "Searching for opponent…" : fromRandomMatch ? "Connecting…" : "Idle",
+  );
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
   const [rallyScore, setRallyScore] = useState(0);
