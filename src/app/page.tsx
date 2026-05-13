@@ -19,8 +19,8 @@ export default function Page() {
                 </h1>
                 <p className={styles.heroQuickMeta}>(random game climb the global ranking)</p>
               </span>
-              <span className={styles.heroQuickChevron} aria-hidden>
-                ›
+              <span className={styles.heroChevronRing} aria-hidden>
+                <span className={styles.heroQuickChevron}>›</span>
               </span>
             </Link>
           </div>
