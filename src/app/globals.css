@@ -1,10 +1,25 @@
 @import "../styles/gameface-tokens.css";
 
+/**
+ * Paint the full canvas including behind the mobile browser chrome.
+ * A 1px “bar” at the top is usually unpainted html or subpixel vh gaps.
+ */
+html {
+  height: 100%;
+  min-height: 100dvh;
+  min-height: 100vh;
+  /* Fills any hairline above the first paint (mobile browser chrome seam). */
+  background-color: var(--gf-bg-1);
+  color-scheme: dark;
+}
+
 html,
 body {
   padding: 0;
   margin: 0;
   min-height: 100%;
+  min-height: 100dvh;
+  min-height: 100vh;
   color: var(--gf-text);
   font-family: var(--gf-font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
@@ -20,6 +35,7 @@ body {
     radial-gradient(ellipse 75% 50% at 0% 95%, rgba(56, 189, 248, 0.055), transparent 50%),
     radial-gradient(ellipse 90% 40% at 50% 100%, rgba(2, 6, 18, 0.55), transparent 55%),
     linear-gradient(180deg, var(--gf-bg-1) 0%, var(--gf-bg-0) 42%, #000000 100%);
+  overflow-x: clip;
 }
 
 /* Subtle film grain (no image asset). */
@@ -42,10 +58,6 @@ body::before {
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
-}
-
-body {
-  overflow-x: clip;
 }
 
 @media (prefers-reduced-motion: reduce) {
