@@ -14,7 +14,7 @@
   background: radial-gradient(ellipse 90% 55% at 50% 0%, rgba(56, 165, 250, 0.1), transparent 55%);
 }
 
-/** Hero branding — “GameFace” as one word: Game (blue) + Face (red) */
+/** Hero branding — “GAMEFACE” as one word: GAME (blue) + FACE (red) */
 .lockup {
   display: flex;
   flex-wrap: nowrap;
@@ -292,7 +292,13 @@
 }
 
 .sectionHead {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+
+.gameCardList {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
 }
 
 .sectionTitle {

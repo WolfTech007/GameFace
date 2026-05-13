@@ -27,31 +27,38 @@ export default function Page() {
             <h2 id="library-heading" className={styles.sectionTitle}>
               Game library
             </h2>
-            <p className={styles.sectionHint}>Large cards · preview rules, then find a match</p>
+            <p className={styles.sectionHint}>Pick a game, then find a match</p>
           </div>
 
-          <GFGameCard
-            href="/charades"
-            title="Charades"
-            descriptor="Guess the muted word — fast, social, ridiculous."
-            category="Most popular"
-            accent="charades"
-            playersOnline="Live"
-          />
-          <GFGameCard
-            href="/staring-contest"
-            title="Staring Contest"
-            descriptor="Don&apos;t blink. Psychological duels."
-            category="Fast match"
-            accent="staring"
-          />
-          <GFGameCard
-            href="/facepong"
-            title="FacePong"
-            descriptor="Nose-controlled pong — competitive chaos."
-            category="Competitive"
-            accent="facepong"
-          />
+          <div className={styles.gameCardList}>
+            <GFGameCard
+              href="/friends"
+              title="Challenge Friend"
+              descriptor="Invite friends"
+              accent="friends"
+            />
+            <GFGameCard
+              href="/charades"
+              title="Lip Reader"
+              descriptor="Guess the muted word."
+              accent="charades"
+            />
+            <GFGameCard
+              href="/staring-contest"
+              title="Staring Contest"
+              descriptor="Don't blink."
+              accent="staring"
+            />
+            <GFGameCard href="/facecard" title="FaceCard" descriptor="Guess who you are" accent="facecard" />
+            <GFGameCard href="/facepong" title="FacePong" descriptor="1v1 webcam pong." accent="facepong" />
+            <GFGameCard
+              href="#"
+              title="Tiptionary"
+              descriptor="Draw with your nose."
+              accent="tiptionary"
+              disabled
+            />
+          </div>
         </section>
 
         <section className={styles.section} id="friends" aria-labelledby="social-heading">

@@ -10,9 +10,9 @@ export function HomeTop() {
 
   return (
     <>
-      <div className={styles.lockup} aria-label="GameFace">
-        <span className={styles.logoGame}>Game</span>
-        <span className={styles.logoFace}>Face</span>
+      <div className={styles.lockup} aria-label="GAMEFACE">
+        <span className={styles.logoGame}>GAME</span>
+        <span className={styles.logoFace}>FACE</span>
       </div>
       <p className={styles.tagline}>Webcam games · faces first</p>
 
