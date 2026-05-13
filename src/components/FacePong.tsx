@@ -171,6 +171,12 @@ export default function FacePong({
   const remotePeerIdRef = useRef<string | null>(null);
   const lastRenderedBallRef = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
   const physicsRunningRef = useRef(false);
+  /** Last rally score pushed to React — avoid setState every RAF in hostTick. */
+  const rallyUiSyncRef = useRef(0);
+  /** Host: throttle net snapshots during play so PeerJS + React stay off the critical path. */
+  const lastPlayOrGoBroadcastMsRef = useRef(0);
+  /** Canvas 2D context — reuse; reset when buffer size changes. */
+  const canvas2dRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const [, bumpLobby] = useReducer((x: number) => x + 1, 0);
 
@@ -187,10 +193,18 @@ export default function FacePong({
     if (!canvas || !frame) return;
     const rect = frame.getBoundingClientRect();
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    canvas.width = Math.floor(rect.width * dpr);
-    canvas.height = Math.floor(rect.height * dpr);
+    const nw = Math.floor(rect.width * dpr);
+    const nh = Math.floor(rect.height * dpr);
+    if (canvas.width === nw && canvas.height === nh) return;
+    canvas.width = nw;
+    canvas.height = nh;
     canvas.style.width = `${rect.width}px`;
     canvas.style.height = `${rect.height}px`;
+    canvas2dRef.current =
+      canvas.getContext("2d", {
+        alpha: true,
+        desynchronized: true,
+      }) ?? null;
   }
 
   async function ensureLocalCamera(opts?: { force?: boolean }) {
@@ -290,6 +304,7 @@ export default function FacePong({
   function hostResetState() {
     hostStateRef.current = makeInitialNetState();
     hostStartedAtRef.current = null;
+    rallyUiSyncRef.current = 0;
     setRallyScore(0);
   }
 
@@ -300,6 +315,7 @@ export default function FacePong({
     hostStateRef.current.matchEpoch = nextEpoch;
     hostStateRef.current.rematch = emptyRematchIntent();
     hostStartedAtRef.current = null;
+    rallyUiSyncRef.current = 0;
     setRallyScore(0);
   }
 
@@ -426,8 +442,11 @@ export default function FacePong({
       }
     }
 
-    setRallyScore(s.rallyScore);
-    if (s.phase === "gameover") {
+    if (s.rallyScore !== rallyUiSyncRef.current) {
+      rallyUiSyncRef.current = s.rallyScore;
+      setRallyScore(s.rallyScore);
+    }
+    if (s.phase === "gameover" && uiPhaseRef.current !== "gameover") {
       setUiPhase("gameover");
     }
   }
@@ -447,8 +466,9 @@ export default function FacePong({
   function draw(state: FacePongNetState) {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas2dRef.current ?? canvas.getContext("2d", { alpha: true, desynchronized: true });
     if (!ctx) return;
+    canvas2dRef.current = ctx;
 
     const w = canvas.width;
     const h = canvas.height;
@@ -521,9 +541,23 @@ export default function FacePong({
       ballHalo = "rgba(0, 190, 255, 0.26)";
     }
 
-    // ball (same world coords on both clients)
-    const bx = state.ball.x * w;
-    const by = screenY(state.ball.y);
+    // Guest: extrapolate between host snapshots so motion stays smooth at ~display refresh rate.
+    const b = state.ball;
+    let bx01 = b.x;
+    let by01 = b.y;
+    if (roleRef.current === "guest" && uiPhaseRef.current === "playing") {
+      const recvAt = lastStateRecvAtRef.current;
+      if (recvAt != null) {
+        const age = (nowMs() - recvAt) / 1000;
+        const t = Math.min(Math.max(0, age), 0.1);
+        bx01 = clamp(b.x + b.vx * t, 0.01, 0.99);
+        by01 = clamp(b.y + b.vy * t, 0.01, 0.99);
+      }
+    }
+
+    // ball (same world coords on both clients; guest may extrapolate bx01/by01)
+    const bx = bx01 * w;
+    const by = screenY(by01);
     const ballR = Math.max(6, Math.round(w * 0.018));
     ctx.beginPath();
     ctx.fillStyle = ballFill;
@@ -656,14 +690,19 @@ export default function FacePong({
         hostStateRef.current = authoritative;
         lastAuthSentAtFromHostRef.current = msg.sentAt;
 
-        setRallyScore(msg.state.rallyScore);
+        if (msg.state.rallyScore !== rallyUiSyncRef.current) {
+          rallyUiSyncRef.current = msg.state.rallyScore;
+          setRallyScore(msg.state.rallyScore);
+        }
         if (msg.state.phase === "playing") setUiPhase("playing");
         if (msg.state.phase === "gameover") setUiPhase("gameover");
         if (msg.state.phase === "lobby") {
           setUiPhase("lobby");
           setOpponentLeftMatch(false);
         }
-        bumpLobby();
+        if (msg.state.phase !== "playing") {
+          bumpLobby();
+        }
       }
     });
 
@@ -785,8 +824,15 @@ export default function FacePong({
 
   useEffect(() => {
     setCanvasSize();
-    window.addEventListener("resize", setCanvasSize);
-    return () => window.removeEventListener("resize", setCanvasSize);
+    const onWin = () => setCanvasSize();
+    window.addEventListener("resize", onWin);
+    const frame = frameRef.current;
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => setCanvasSize()) : null;
+    if (frame && ro) ro.observe(frame);
+    return () => {
+      window.removeEventListener("resize", onWin);
+      ro?.disconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -802,14 +848,20 @@ export default function FacePong({
       const playing = uiPhaseRef.current === "playing";
       physicsRunningRef.current = !!(isHost && opponentConnected && playing);
 
-      // Host: sole physics while playing. Guest never calls hostTick. Broadcast playing + gameover so joiner stays in sync.
+      // Host: sole physics while playing. Guest never calls hostTick.
+      // Throttle net snapshots during play/gameover so PeerJS + React stay off the critical path.
       if (isHost && opponentConnected) {
-        if (hostStateRef.current.phase === "playing") {
+        const s = hostStateRef.current;
+        if (s.phase === "playing") {
           hostTick(dt);
         }
         const ph = hostStateRef.current.phase;
         if (ph === "playing" || ph === "gameover") {
-          broadcastAuthoritativeState();
+          const intervalMs = ph === "playing" ? 20 : 80;
+          if (n - lastPlayOrGoBroadcastMsRef.current >= intervalMs) {
+            lastPlayOrGoBroadcastMsRef.current = n;
+            broadcastAuthoritativeState();
+          }
         }
       }
 
@@ -856,7 +908,7 @@ export default function FacePong({
         }}
       />
       <div
-        className={gp.surfaceMain}
+        className={`${gp.surfaceMain} ${styles.facePongMain}`}
         style={{
           flex: 1,
           minHeight: 0,
@@ -864,8 +916,8 @@ export default function FacePong({
           flexDirection: "column",
           justifyContent: "center",
           alignItems: "center",
-          width: "min(760px, calc(100vw - 32px))",
-          maxWidth: "min(760px, calc(100vw - 32px))",
+          width: "100%",
+          maxWidth: 760,
         }}
       >
       <div ref={frameRef} className={styles.frame}>

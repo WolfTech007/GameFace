@@ -8,13 +8,31 @@
   padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
+/* Size query container for FacePong arena width → correct height without mis-resolved % in height. */
+.facePongMain {
+  container-type: inline-size;
+  container-name: fp;
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
 .frame {
-  /* Two stacked 1:1 camera squares — side limited by width or half remaining viewport height */
-  --sq: min(min(760px, calc(100vw - 32px)), calc((min(100dvh, 100svh) - 112px) / 2));
-  width: var(--sq);
-  max-width: 100%;
-  height: calc(var(--sq) * 2);
-  max-height: calc(100dvh - 96px);
+  /*
+   * Full width of the stage column (up to 760px) — width is not shrunk from viewport height.
+   * Height = min(2× that width, remaining viewport). Uses cq w so height tracks real column width, not % of height.
+   */
+  width: 100%;
+  /* Fallback when container query units unsupported (uses viewport width). */
+  height: min(
+    calc(min(100dvh, 100svh) - 104px),
+    calc(min(760px, 100vw) * 2)
+  );
+  height: min(
+    calc(min(100dvh, 100svh) - 104px),
+    calc(min(760px, 100cqw) * 2)
+  );
   min-height: 0;
   position: relative;
   border-radius: 24px;
