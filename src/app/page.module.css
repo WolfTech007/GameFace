@@ -85,11 +85,11 @@
 
 .homeWordmark {
   flex-shrink: 0;
-  font-size: clamp(17px, 4.2vw, 20px);
+  font-size: clamp(16px, 4vw, 19px);
   font-weight: 300;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   line-height: 1;
-  text-transform: lowercase;
+  text-transform: uppercase;
   color: rgba(248, 250, 252, 0.9);
 }
 

@@ -20,7 +20,7 @@ export function HomeTop() {
             </div>
           </div>
         </Link>
-        <span className={styles.homeWordmark}>gameface</span>
+        <span className={styles.homeWordmark}>GAMEFACE</span>
       </div>
       <div className={styles.homeTopDivider} aria-hidden />
     </header>
