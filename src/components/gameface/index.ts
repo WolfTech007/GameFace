@@ -5,5 +5,6 @@ export { GFBottomNav } from "./GFBottomNav";
 export { GFGameCard } from "./GFGameCard";
 export { GameIntro } from "./GameIntro";
 export { GamePlayEntrance } from "./GamePlayEntrance";
+export { PausedForLaunchPage } from "./PausedForLaunchPage";
 export { GameplayDuelHud } from "./gameplay/GameplayDuelHud";
 export type { DuelHudIdentity, GameplayDuelHudProps } from "./gameplay/GameplayDuelHud";

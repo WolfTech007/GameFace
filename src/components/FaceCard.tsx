@@ -19,7 +19,6 @@ import type { FaceCardNetMsg } from "@/lib/facecardProtocol";
 import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
-import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
@@ -608,10 +607,6 @@ export default function FaceCard({
       }
     }, QUEUE_POLL_MS);
   }
-
-  useConsumePendingMatch("facecard", (p) => {
-    void applyMatch(p.peerRoomId, p.role, "");
-  });
 
   useEffect(() => {
     if (!autoJoinPublicQueue) return;

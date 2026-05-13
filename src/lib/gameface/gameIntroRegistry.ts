@@ -1,7 +1,7 @@
 /** Routes under `/` that show the universal GameIntro (not the live arena). */
-export type GameIntroSlug = "charades" | "staring-contest" | "facepong" | "facecard";
+export type GameIntroSlug = "charades" | "staring-contest" | "facepong";
 
-export type GameIntroAccent = "charades" | "staring" | "facepong" | "facecard";
+export type GameIntroAccent = "charades" | "staring" | "facepong";
 
 export type GameIntroConfig = {
   slug: GameIntroSlug;
@@ -38,13 +38,5 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
       "Control your paddle with your face and outscore your opponent in a fast webcam arcade match.",
     accent: "facepong",
     playPath: "/facepong/play",
-  },
-  facecard: {
-    slug: "facecard",
-    title: "FACE CARD",
-    description:
-      "Guess the name on your card by asking questions before your opponent figures theirs out.",
-    accent: "facecard",
-    playPath: "/facecard/play",
   },
 };

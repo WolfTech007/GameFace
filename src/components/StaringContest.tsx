@@ -225,7 +225,7 @@ export default function StaringContest({
             if (VIDEO_DEBUG) console.log("[StaringContest] remote video playing", source);
           })
           .catch((e) => {
-            console.warn("[StaringContest] remote video play()", source, e);
+            if (VIDEO_DEBUG) console.warn("[StaringContest] remote video play()", source, e);
           });
       };
 
@@ -583,7 +583,7 @@ export default function StaringContest({
           attachRemoteStream(remoteStream, "host_call_answer");
         });
         call.on("error", (err: unknown) => {
-          console.warn("[StaringContest] host media connection error", err);
+          if (VIDEO_DEBUG) console.warn("[StaringContest] host media connection error", err);
         });
       });
 
@@ -624,7 +624,7 @@ export default function StaringContest({
         attachRemoteStream(remoteStream, "guest_call_out");
       });
       call.on("error", (err: unknown) => {
-        console.warn("[StaringContest] guest outbound media error", err);
+        if (VIDEO_DEBUG) console.warn("[StaringContest] guest outbound media error", err);
       });
 
       guestAnswerCalls(peer, stream, (incoming) => {

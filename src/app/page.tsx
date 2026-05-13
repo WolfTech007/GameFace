@@ -58,13 +58,6 @@ export default function Page() {
             category="Competitive"
             accent="facepong"
           />
-          <GFGameCard
-            href="/facecard"
-            title="Face Card"
-            descriptor="Guess who you are from clues on your forehead."
-            category="Best with friends"
-            accent="facecard"
-          />
         </section>
 
         <section className={styles.section} id="friends" aria-labelledby="social-heading">
