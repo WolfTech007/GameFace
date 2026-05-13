@@ -52,20 +52,6 @@ export default function Page() {
               accent="staring"
             />
             <GFGameCard href="/facepong" title="FacePong" descriptor="1v1 webcam pong." accent="facepong" />
-            <GFGameCard
-              href="/lipreader"
-              title="Lip Reader"
-              descriptor="Guess the muted word."
-              accent="lipreader"
-            />
-            <GFGameCard href="/facecard" title="FaceCard" descriptor="Guess who you are." accent="facecard" />
-            <GFGameCard
-              href="#"
-              title="Tiptionary"
-              descriptor="Draw with your nose."
-              accent="tiptionary"
-              disabled
-            />
           </div>
         </section>
 
