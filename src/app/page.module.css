@@ -28,7 +28,7 @@
   width: 100%;
   display: flex;
   justify-content: center;
-  padding-top: 18px;
+  padding-top: 11px;
   margin-bottom: 20px;
 }
 
@@ -47,7 +47,7 @@
 
 @media (max-width: 380px) {
   .headerLogoWrap {
-    padding-top: 14px;
+    padding-top: 8px;
     margin-bottom: 18px;
   }
 
@@ -179,7 +179,7 @@
 .main {
   max-width: min(var(--gf-max-content), 100%);
   margin: 0 auto;
-  padding: calc(var(--safe-top) + 8px) calc(var(--safe-left) + 14px) calc(var(--safe-bottom) + 78px)
+  padding: calc(var(--safe-top) + 5px) calc(var(--safe-left) + 14px) calc(var(--safe-bottom) + 78px)
     calc(var(--safe-right) + 14px);
 }
 
