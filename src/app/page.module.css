@@ -14,74 +14,89 @@
   background: radial-gradient(ellipse 90% 55% at 50% 0%, rgba(56, 165, 250, 0.1), transparent 55%);
 }
 
-/** Hero branding — “GAMEFACE” as one word: GAME (blue) + FACE (red) */
-.lockup {
+/** Compact home header — profile left, wordmark right, divider (reference layout). */
+.homeTopStrip {
+  margin: 0 0 18px;
+  font-family: var(--gf-font-brand), var(--gf-font-body), system-ui, sans-serif;
+}
+
+.homeTopRow {
   display: flex;
-  flex-wrap: nowrap;
-  align-items: baseline;
-  justify-content: center;
-  gap: 0;
-  margin: 0 auto 8px;
-  font-size: clamp(36px, 12vw, 52px);
-  font-weight: 950;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  text-align: center;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 46px;
 }
 
-.logoGame {
-  background: linear-gradient(180deg, #f8fafc 0%, #bae6fd 45%, #38bdf8 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow: 0 0 42px rgba(56, 189, 248, 0.45);
-}
-
-.logoFace {
-  background: linear-gradient(180deg, #ffe4e6 0%, #fb7185 45%, #e11d48 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 28px rgba(251, 113, 133, 0.4));
-}
-
-.tagline {
-  margin: 0 0 20px;
-  text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--gf-text-muted);
-}
-
-.loginLink {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--gf-you);
+.homeProfile {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
   text-decoration: none;
-  opacity: 0.92;
+  color: inherit;
+  border-radius: 12px;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.loginLink:hover {
-  opacity: 1;
-  text-decoration: underline;
+.homeProfile:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.75);
+  outline-offset: 3px;
 }
 
-.rankBadge {
-  padding: 3px 9px;
+.homeAvatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(248, 250, 252, 0.95);
-  background: rgba(8, 10, 18, 0.75);
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  box-shadow: 0 0 16px rgba(251, 191, 36, 0.1);
+  background: linear-gradient(145deg, rgba(124, 92, 255, 0.42), rgba(56, 189, 248, 0.38));
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.55),
+    0 0 0 2px rgba(56, 189, 248, 0.38),
+    0 0 20px rgba(124, 92, 255, 0.28),
+    0 0 16px rgba(56, 189, 248, 0.2);
 }
 
-.level {
-  font-weight: 650;
+.homeProfileText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.homeHandle {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(248, 250, 252, 0.96);
+}
+
+.homeLevelStats {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.82);
+}
+
+.homeWordmark {
+  flex-shrink: 0;
+  font-size: clamp(17px, 4.2vw, 20px);
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: lowercase;
+  color: rgba(248, 250, 252, 0.9);
+}
+
+.homeTopDivider {
+  height: 1px;
+  margin-top: 14px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .main {
@@ -89,80 +104,6 @@
   margin: 0 auto;
   padding: calc(var(--safe-top) + 16px) calc(var(--safe-left) + 18px) calc(var(--safe-bottom) + 88px)
     calc(var(--safe-right) + 18px);
-}
-
-.topBar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 28px;
-}
-
-.profile {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.35), rgba(124, 92, 255, 0.3));
-  box-shadow:
-    0 0 0 2px rgba(56, 189, 248, 0.45),
-    0 0 24px rgba(124, 92, 246, 0.18);
-}
-
-.profileText {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.handle {
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  color: var(--gf-text);
-}
-
-.levelRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--gf-text-muted);
-}
-
-.dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--gf-text-dim);
-}
-
-.online {
-  color: #86efac;
-  font-weight: 650;
-}
-
-.topRight {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.friendsOnline {
-  font-size: 12px;
-  color: var(--gf-text-muted);
-}
-
-.challengeBtn {
-  padding: 10px 14px !important;
-  font-size: 13px !important;
 }
 
 .hero {
@@ -178,50 +119,33 @@
   color: var(--gf-text-dim);
 }
 
-.heroTitle {
-  margin: 0;
-  font-size: clamp(26px, 7vw, 34px);
-  font-weight: 750;
-  letter-spacing: -0.02em;
-  line-height: 1.12;
-  color: var(--gf-text);
-}
-
-.heroSub {
-  margin: 10px 0 0;
-  font-size: 14px;
-  line-height: 1.45;
-  letter-spacing: -0.01em;
-  color: var(--gf-text-muted);
-  max-width: 36ch;
-}
-
 .heroActions {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
-.heroPrimary {
+/** Reference “Quick match” — full-width glass card, centered copy, right chevron, vertical blue glow */
+.heroQuickCard {
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: 14px;
-  padding: 22px 26px;
-  border-radius: var(--gf-radius-lg);
+  min-height: 112px;
+  padding: 22px 56px 22px 22px;
+  border-radius: 22px;
   text-decoration: none;
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.98);
-  background: var(--gf-glass-fill);
+  color: inherit;
+  background: rgba(4, 6, 12, 0.82);
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
-  border: 1px solid rgba(56, 189, 248, 0.55);
-  box-shadow: var(--gf-neon-glow-strong);
+  border: 1px solid rgba(56, 189, 248, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.12),
+    0 -10px 36px rgba(56, 189, 248, 0.18),
+    0 10px 36px rgba(56, 189, 248, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   overflow: hidden;
   transition:
     transform var(--gf-duration-fast) var(--gf-ease-out),
@@ -229,15 +153,55 @@
     box-shadow var(--gf-duration-fast) var(--gf-ease-out);
 }
 
-.heroPrimary::after {
-  content: "→";
-  font-size: 1.05em;
+.heroQuickCardText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+}
+
+.heroQuickTitle {
+  margin: 0;
+  font-size: clamp(17px, 4.6vw, 20px);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.heroQuickMeta {
+  margin: 0;
+  max-width: 32ch;
+  font-size: 12px;
   font-weight: 500;
-  opacity: 0.85;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
+  color: rgba(226, 232, 240, 0.52);
+}
+
+.heroQuickChevron {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 28px;
+  font-weight: 300;
+  line-height: 1;
+  color: #7dd3fc;
+  text-shadow:
+    0 0 12px rgba(56, 189, 248, 0.85),
+    0 0 28px rgba(56, 189, 248, 0.45);
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .heroPrimary::before {
+  .heroQuickCard::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -245,7 +209,7 @@
     background: linear-gradient(
       100deg,
       transparent 35%,
-      rgba(255, 255, 255, 0.06) 50%,
+      rgba(255, 255, 255, 0.05) 50%,
       transparent 65%
     );
     transform: translateX(-100%);
@@ -253,23 +217,74 @@
   }
 }
 
-.heroPrimary:hover {
+.heroQuickCard:hover {
   transform: translateY(-2px);
-  border-color: rgba(56, 189, 248, 0.85);
+  border-color: rgba(56, 189, 248, 0.62);
   box-shadow:
-    0 0 0 1px rgba(56, 189, 248, 0.65),
-    0 0 52px rgba(56, 189, 248, 0.28),
+    0 0 0 1px rgba(56, 189, 248, 0.2),
+    0 -12px 44px rgba(56, 189, 248, 0.22),
+    0 12px 44px rgba(56, 189, 248, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.heroPrimary:active {
+.heroQuickCard:active {
   transform: translateY(0);
 }
 
+.heroQuickCard:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.85);
+  outline-offset: 3px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .heroPrimary::before {
+  .heroQuickCard::before {
     display: none;
   }
+}
+
+.heroPickLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  color: var(--gf-text-dim);
+}
+
+.heroCrosshair {
+  position: relative;
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--gf-you);
+  opacity: 0.92;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.65));
+}
+
+.heroCrosshair::before,
+.heroCrosshair::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.heroCrosshair::before {
+  width: 10px;
+  height: 2px;
+}
+
+.heroCrosshair::after {
+  width: 2px;
+  height: 10px;
 }
 
 @keyframes heroShimmer {

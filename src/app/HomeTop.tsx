@@ -2,44 +2,27 @@
 
 import Link from "next/link";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
-import { GFButton } from "@/components/gameface";
 import styles from "./page.module.css";
 
 export function HomeTop() {
   const { profile } = useGameFaceProfile();
+  const xp = profile.xp ?? 120;
 
   return (
-    <>
-      <div className={styles.lockup} aria-label="GAMEFACE">
-        <span className={styles.logoGame}>GAME</span>
-        <span className={styles.logoFace}>FACE</span>
-      </div>
-      <p className={styles.tagline}>Webcam games · faces first</p>
-
-      <header className={styles.topBar}>
-        <div className={styles.profile}>
-          <div className={styles.avatar} aria-hidden />
-          <div className={styles.profileText}>
-            <div className={styles.handle}>@{profile.username}</div>
-            <div className={styles.levelRow}>
-              <span className={styles.level}>Level {profile.level}</span>
-              <span className={styles.dot} aria-hidden />
-              <span className={styles.rankBadge}>{profile.rank}</span>
-              <span className={styles.dot} aria-hidden />
-              <span className={styles.online}>Online</span>
+    <header className={styles.homeTopStrip}>
+      <div className={styles.homeTopRow}>
+        <Link href="/profile" className={styles.homeProfile}>
+          <div className={styles.homeAvatar} aria-hidden />
+          <div className={styles.homeProfileText}>
+            <div className={styles.homeHandle}>@{profile.username}</div>
+            <div className={styles.homeLevelStats}>
+              LEVEL {profile.level} • {xp} XP
             </div>
           </div>
-        </div>
-        <div className={styles.topRight}>
-          <span className={styles.friendsOnline}>3 friends online</span>
-          <GFButton variant="ghost" className={styles.challengeBtn} disabled title="Coming soon">
-            Challenge
-          </GFButton>
-          <Link href="/login" className={styles.loginLink}>
-            Account
-          </Link>
-        </div>
-      </header>
-    </>
+        </Link>
+        <span className={styles.homeWordmark}>gameface</span>
+      </div>
+      <div className={styles.homeTopDivider} aria-hidden />
+    </header>
   );
 }

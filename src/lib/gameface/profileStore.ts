@@ -6,6 +6,8 @@ export type GameFaceProfile = {
   displayName: string;
   level: number;
   rank: string;
+  /** XP toward next level (client-only until accounts sync). */
+  xp?: number;
   avatarUrl?: string;
   favoriteGame?: string;
 };
@@ -38,7 +40,13 @@ export function ensureProfile(): GameFaceProfile {
       displayName: "Player",
       level: 1,
       rank: "Silver I",
+      xp: 120,
     };
+    saveProfile(p);
+    return p;
+  }
+  if (p.xp === undefined) {
+    p = { ...p, xp: 120 };
     saveProfile(p);
   }
   return p;

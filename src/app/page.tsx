@@ -11,15 +11,23 @@ export default function Page() {
 
         <section className={styles.hero} aria-labelledby="quick-match-heading">
           <p className={styles.eyebrow}>Quick start</p>
-          <h1 id="quick-match-heading" className={styles.heroTitle}>
-            Quick match
-          </h1>
-          <p className={styles.heroSub}>Pick how you want to play — faces stay center stage.</p>
           <div className={styles.heroActions}>
-            <Link href="/match/random" className={styles.heroPrimary}>
-              Random match
+            <Link href="/match/random" className={styles.heroQuickCard}>
+              <span className={styles.heroQuickCardText}>
+                <h1 id="quick-match-heading" className={styles.heroQuickTitle}>
+                  Quick match
+                </h1>
+                <p className={styles.heroQuickMeta}>(random game climb the global ranking)</p>
+              </span>
+              <span className={styles.heroQuickChevron} aria-hidden>
+                ›
+              </span>
             </Link>
           </div>
+          <p className={styles.heroPickLine}>
+            <span className={styles.heroCrosshair} aria-hidden />
+            <span>Pick how you want to play — faces stay center stage.</span>
+          </p>
         </section>
 
         <section className={styles.section} id="games" aria-labelledby="library-heading">
@@ -32,14 +40,8 @@ export default function Page() {
 
           <div className={styles.gameCardList}>
             <GFGameCard
-              href="/friends"
-              title="Challenge Friend"
-              descriptor="Invite friends"
-              accent="friends"
-            />
-            <GFGameCard
               href="/charades"
-              title="Lip Reader"
+              title="Charades"
               descriptor="Guess the muted word."
               accent="charades"
             />
@@ -49,15 +51,7 @@ export default function Page() {
               descriptor="Don't blink."
               accent="staring"
             />
-            <GFGameCard href="/facecard" title="FaceCard" descriptor="Guess who you are" accent="facecard" />
             <GFGameCard href="/facepong" title="FacePong" descriptor="1v1 webcam pong." accent="facepong" />
-            <GFGameCard
-              href="#"
-              title="Tiptionary"
-              descriptor="Draw with your nose."
-              accent="tiptionary"
-              disabled
-            />
           </div>
         </section>
 

@@ -27,6 +27,7 @@ export function GameFaceProfileProvider({ children }: { children: React.ReactNod
         displayName: "Player",
         level: 1,
         rank: "Silver I",
+        xp: 120,
       };
     }
     const p = ensureProfile();
