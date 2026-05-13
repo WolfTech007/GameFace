@@ -17,17 +17,10 @@ export default function Page() {
                 <h1 id="quick-match-heading" className={styles.heroQuickTitle}>
                   Quick match
                 </h1>
-                <p className={styles.heroQuickMeta}>Random game climb the global ranking</p>
-              </span>
-              <span className={styles.heroChevronRing} aria-hidden>
-                <span className={styles.heroQuickChevron}>→</span>
+                <p className={styles.heroQuickMeta}>Random games against strangers</p>
               </span>
             </Link>
           </div>
-          <p className={styles.heroPickLine}>
-            <span className={styles.heroCrosshair} aria-hidden />
-            <span>Pick how you want to play — faces stay center stage.</span>
-          </p>
         </section>
 
         <section className={styles.section} id="games" aria-labelledby="library-heading">

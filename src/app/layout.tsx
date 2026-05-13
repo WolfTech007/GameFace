@@ -1,7 +1,7 @@
 import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
-import { Inter, Outfit } from "next/font/google";
+import { Bebas_Neue, Inter, Orbitron, Outfit } from "next/font/google";
 import { GameFaceProfileProvider } from "@/contexts/GameFaceProfileContext";
 
 const inter = Inter({
@@ -16,6 +16,22 @@ const outfit = Outfit({
   display: "swap",
   variable: "--gf-font-brand",
   weight: ["300", "400", "500", "600", "700"],
+});
+
+/** Thick display caps for game titles (home cards). */
+const bebasNeue = Bebas_Neue({
+  weight: "400",
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--gf-font-display",
+});
+
+/** Sci-fi headline for Quick match CTA. */
+const orbitron = Orbitron({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--gf-font-sci",
+  weight: ["600", "700", "800", "900"],
 });
 
 export const metadata: Metadata = {
@@ -33,7 +49,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${outfit.variable}`}>
+    <html lang="en" className={`${inter.variable} ${outfit.variable} ${bebasNeue.variable} ${orbitron.variable}`}>
       <body className={inter.className}>
         <GameFaceProfileProvider>{children}</GameFaceProfileProvider>
       </body>

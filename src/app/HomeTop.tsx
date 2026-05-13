@@ -15,6 +15,7 @@ export function HomeTop() {
         <span className={styles.homeLogoGame}>GAME</span>
         <span className={styles.homeLogoFace}>FACE</span>
       </div>
+      <p className={styles.homeTagline}>Face to face gaming</p>
 
       <div className={styles.homeTopRow}>
         <Link href="/profile" className={styles.homeProfile}>
