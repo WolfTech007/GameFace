@@ -183,15 +183,18 @@ export default function StaringContest({
   }, []);
 
   /**
-   * Attach remote MediaStream to the top video (FacePong / FaceCard pattern).
-   * - Keeps video tracks enabled.
-   * - `muted` on the <video> element (not the track) avoids iOS/Safari autoplay blocking; picture still renders.
+   * Attach remote MediaStream to the opponent video pane.
+   * - Keeps video + **audio** tracks enabled so each player can hear the other.
+   * - Local preview stays `muted` to avoid feedback; remote is **not** muted.
    */
   const attachRemoteStream = useCallback(
     (remoteStream: MediaStream, source: string) => {
       remoteStreamRef.current = remoteStream;
       setHasRemoteStream(true);
       for (const t of remoteStream.getVideoTracks()) {
+        t.enabled = true;
+      }
+      for (const t of remoteStream.getAudioTracks()) {
         t.enabled = true;
       }
       if (VIDEO_DEBUG) {
@@ -218,6 +221,7 @@ export default function StaringContest({
 
       const attachToEl = (target: HTMLVideoElement) => {
         target.srcObject = remoteStream;
+        target.muted = false;
         if (VIDEO_DEBUG) console.log("[StaringContest] remote video element attach", source);
         void target
           .play()
@@ -877,7 +881,6 @@ export default function StaringContest({
                     className={`${gp.surfaceFeed} ${styles.video} ${styles.videoRemote}`}
                     playsInline
                     autoPlay
-                    muted
                     onPlaying={() => {
                       setRemoteVideoPlaying(true);
                       bumpVideoDebug();

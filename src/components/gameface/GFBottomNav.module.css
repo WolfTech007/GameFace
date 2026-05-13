@@ -53,6 +53,9 @@
 
 .link:hover {
   color: rgba(255, 255, 255, 0.72);
+}
+
+.link:hover:not(.active) {
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -61,13 +64,9 @@
 }
 
 .active {
-  color: #e0f2fe;
-  background: rgba(56, 189, 248, 0.14);
-  box-shadow:
-    0 0 0 1px rgba(56, 189, 248, 0.55),
-    0 0 32px rgba(56, 189, 248, 0.35),
-    0 0 48px rgba(14, 165, 233, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  color: rgba(240, 249, 255, 0.95);
+  background: transparent;
+  box-shadow: none;
 }
 
 .icon {
@@ -79,7 +78,10 @@
 
 .active .icon {
   opacity: 1;
-  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.75)) drop-shadow(0 0 20px rgba(14, 165, 233, 0.4));
+  color: #f0f9ff;
+  filter:
+    drop-shadow(0 0 6px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 16px rgba(56, 189, 248, 0.75))
+    drop-shadow(0 0 28px rgba(14, 165, 233, 0.45));
 }
 
 .label {
