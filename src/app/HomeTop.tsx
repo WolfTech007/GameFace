@@ -11,11 +11,18 @@ export function HomeTop() {
 
   return (
     <header className={styles.homeTopStrip}>
-      <div className={styles.homeLockup} aria-label="GAMEFACE">
-        <span className={styles.homeLogoGame}>GAME</span>
-        <span className={styles.homeLogoFace}>FACE</span>
+      <div className={styles.headerLogoWrap}>
+        <img
+          src="/assets/gameface-header.png"
+          alt="GAMEFACE — face to face gaming"
+          className={styles.headerLogo}
+          width={1024}
+          height={257}
+          fetchPriority="high"
+          decoding="async"
+          draggable={false}
+        />
       </div>
-      <p className={styles.homeTagline}>Face to face gaming</p>
 
       <div className={styles.homeTopRow}>
         <Link href="/profile" className={styles.homeProfile}>
