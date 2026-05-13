@@ -15,6 +15,8 @@ export type GameplayDuelHudProps = {
   gameBadge: string;
   opponent: DuelHudIdentity;
   you: DuelHudIdentity;
+  /** FacePong arcade HUD — glass cards + gradient title; other games omit. */
+  variant?: "default" | "facePong";
 };
 
 function UsernameLine({ plain, align }: { plain: string; align: "start" | "end" }) {
@@ -31,17 +33,22 @@ function UsernameLine({ plain, align }: { plain: string; align: "start" | "end" 
   );
 }
 
-export function GameplayDuelHud({ gameBadge, opponent, you }: GameplayDuelHudProps) {
+export function GameplayDuelHud({ gameBadge, opponent, you, variant = "default" }: GameplayDuelHudProps) {
   const youOnline = you.online !== false;
   const oppOnline = opponent.online !== false;
+  const fp = variant === "facePong";
 
   return (
-    <header className={styles.bar} aria-label="Match players">
-      <div className={`${styles.side} ${styles.sideOpponent}`}>
+    <header className={`${styles.bar} ${fp ? styles.barFacePong : ""}`} aria-label="Match players">
+      <div
+        className={`${styles.side} ${styles.sideOpponent} ${fp ? styles.sideFacePongOpp : ""}`}
+      >
         <div className={styles.avatar} aria-hidden />
         <div className={styles.column}>
           <div className={`${styles.primaryRow} ${styles.primaryRowOpp}`}>
-            <span className={styles.displayName}>{opponent.displayName}</span>
+            <span className={`${styles.displayName} ${fp ? styles.displayNameFacePong : ""}`}>
+              {opponent.displayName}
+            </span>
             {oppOnline ? <span className={styles.liveDot} title="Online" /> : null}
           </div>
           <UsernameLine plain={opponent.username} align="start" />
@@ -49,15 +56,15 @@ export function GameplayDuelHud({ gameBadge, opponent, you }: GameplayDuelHudPro
       </div>
 
       <div className={styles.center} aria-hidden>
-        <span className={styles.badge}>{gameBadge}</span>
+        <span className={`${styles.badge} ${fp ? styles.badgeFacePong : ""}`}>{gameBadge}</span>
       </div>
 
-      <div className={`${styles.side} ${styles.sideYou}`}>
+      <div className={`${styles.side} ${styles.sideYou} ${fp ? styles.sideFacePongYou : ""}`}>
         <div className={styles.avatar} aria-hidden />
         <div className={styles.column}>
           <div className={`${styles.primaryRow} ${styles.primaryRowYou}`}>
             {youOnline ? <span className={styles.liveDot} title="Live" /> : null}
-            <span className={styles.displayName}>{you.displayName}</span>
+            <span className={`${styles.displayName} ${fp ? styles.displayNameFacePong : ""}`}>{you.displayName}</span>
           </div>
           <UsernameLine plain={you.username} align="end" />
         </div>

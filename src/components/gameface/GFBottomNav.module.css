@@ -78,10 +78,15 @@
 
 .active .icon {
   opacity: 1;
-  color: #f0f9ff;
+  color: #ffffff;
   filter:
-    drop-shadow(0 0 6px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 16px rgba(56, 189, 248, 0.75))
-    drop-shadow(0 0 28px rgba(14, 165, 233, 0.45));
+    drop-shadow(0 0 5px rgba(186, 230, 253, 1)) drop-shadow(0 0 10px rgba(56, 189, 248, 1))
+    drop-shadow(0 0 20px rgba(56, 189, 248, 1)) drop-shadow(0 0 36px rgba(14, 165, 233, 0.9))
+    drop-shadow(0 0 52px rgba(56, 189, 248, 0.65));
+  text-shadow:
+    0 0 10px rgba(56, 189, 248, 1),
+    0 0 22px rgba(56, 189, 248, 0.95),
+    0 0 40px rgba(14, 165, 233, 0.75);
 }
 
 .label {

@@ -157,3 +157,96 @@
     box-shadow: none;
   }
 }
+
+/* —— FacePong: reference HUD — glass panels + neon rims + gradient title —— */
+
+.barFacePong {
+  gap: 8px;
+  padding: 6px 10px max(6px, env(safe-area-inset-top, 0px));
+}
+
+.sideFacePongOpp,
+.sideFacePongYou {
+  border-radius: 14px;
+  padding: 7px 10px;
+  background: rgba(4, 8, 18, 0.52);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.sideFacePongOpp {
+  border: 2px solid rgba(255, 70, 110, 0.88);
+  box-shadow:
+    0 0 0 1px rgba(255, 70, 110, 0.12),
+    0 0 16px rgba(255, 70, 110, 0.45),
+    0 10px 36px rgba(0, 0, 0, 0.45);
+  animation: fpHudNeonOpp 3.2s ease-in-out infinite;
+}
+
+.sideFacePongYou {
+  border: 2px solid rgba(0, 190, 255, 0.88);
+  box-shadow:
+    0 0 0 1px rgba(0, 190, 255, 0.12),
+    0 0 16px rgba(0, 190, 255, 0.45),
+    0 10px 36px rgba(0, 0, 0, 0.45);
+  animation: fpHudNeonYou 3.2s ease-in-out infinite 0.4s;
+}
+
+@keyframes fpHudNeonOpp {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(255, 70, 110, 0.12),
+      0 0 14px rgba(255, 70, 110, 0.38),
+      0 10px 36px rgba(0, 0, 0, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(255, 70, 110, 0.18),
+      0 0 22px rgba(255, 70, 110, 0.58),
+      0 10px 36px rgba(0, 0, 0, 0.45);
+  }
+}
+
+@keyframes fpHudNeonYou {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(0, 190, 255, 0.12),
+      0 0 14px rgba(0, 190, 255, 0.38),
+      0 10px 36px rgba(0, 0, 0, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(0, 190, 255, 0.18),
+      0 0 22px rgba(0, 190, 255, 0.58),
+      0 10px 36px rgba(0, 0, 0, 0.45);
+  }
+}
+
+.badgeFacePong {
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  padding: 0 2px;
+  background: linear-gradient(90deg, #38bdf8 0%, #a855f7 42%, #fb7185 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.55)) drop-shadow(0 0 14px rgba(251, 113, 133, 0.35));
+}
+
+.displayNameFacePong {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sideFacePongOpp,
+  .sideFacePongYou {
+    animation: none;
+  }
+}

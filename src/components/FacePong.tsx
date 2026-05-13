@@ -463,16 +463,6 @@ export default function FacePong({
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
 
-    // center line (world equator between the two video halves)
-    ctx.strokeStyle = "rgba(255,255,255,0.12)";
-    ctx.lineWidth = Math.max(1, Math.round(w * 0.004));
-    ctx.setLineDash([Math.max(6, Math.round(w * 0.03)), Math.max(6, Math.round(w * 0.03))]);
-    ctx.beginPath();
-    ctx.moveTo(0, h / 2);
-    ctx.lineTo(w, h / 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
     const paddleW = w * 0.26;
     const paddleH = Math.max(10, Math.round(w * 0.03));
     const padR = Math.round(paddleH * 0.6);
@@ -482,14 +472,23 @@ export default function FacePong({
     const botCx = state.paddles.hostX * w;
     const botCy = screenY(PADDLE_WORLD_Y_BOT);
 
-    // World B (guest / top paddle)
-    ctx.fillStyle = "rgba(180, 235, 255, 0.95)";
+    // World B (guest / top paddle) — neon pink
+    ctx.save();
+    ctx.shadowColor = "rgba(255, 70, 110, 0.75)";
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = "rgba(255, 95, 130, 0.96)";
     roundRect(ctx, topCx - paddleW / 2, topCy - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
-    // World A (host / bottom paddle)
-    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+    ctx.restore();
+
+    // World A (host / bottom paddle) — neon cyan
+    ctx.save();
+    ctx.shadowColor = "rgba(0, 190, 255, 0.72)";
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = "rgba(70, 210, 255, 0.96)";
     roundRect(ctx, botCx - paddleW / 2, botCy - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
+    ctx.restore();
 
     // ball (same world coords on both clients)
     const bx = state.ball.x * w;
@@ -812,6 +811,7 @@ export default function FacePong({
     <main className={gp.surfaceRoot}>
       <div className={gp.surfaceVignette} aria-hidden />
       <GameplayDuelHud
+        variant="facePong"
         gameBadge="FacePong"
         opponent={{
           displayName: showMatchmaking ? "Finding match" : opponentConnected ? "Rival" : "Arena",
@@ -833,8 +833,8 @@ export default function FacePong({
           flexDirection: "column",
           justifyContent: "center",
           alignItems: "center",
-          width: "100%",
-          maxWidth: "100%",
+          width: "min(760px, calc(100vw - 32px))",
+          maxWidth: "min(760px, calc(100vw - 32px))",
         }}
       >
       <div ref={frameRef} className={styles.frame}>
