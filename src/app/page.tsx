@@ -17,10 +17,10 @@ export default function Page() {
                 <h1 id="quick-match-heading" className={styles.heroQuickTitle}>
                   Quick match
                 </h1>
-                <p className={styles.heroQuickMeta}>(random game climb the global ranking)</p>
+                <p className={styles.heroQuickMeta}>Random game climb the global ranking</p>
               </span>
               <span className={styles.heroChevronRing} aria-hidden>
-                <span className={styles.heroQuickChevron}>›</span>
+                <span className={styles.heroQuickChevron}>→</span>
               </span>
             </Link>
           </div>
@@ -52,6 +52,20 @@ export default function Page() {
               accent="staring"
             />
             <GFGameCard href="/facepong" title="FacePong" descriptor="1v1 webcam pong." accent="facepong" />
+            <GFGameCard
+              href="/lipreader"
+              title="Lip Reader"
+              descriptor="Guess the muted word."
+              accent="lipreader"
+            />
+            <GFGameCard href="/facecard" title="FaceCard" descriptor="Guess who you are." accent="facecard" />
+            <GFGameCard
+              href="#"
+              title="Tiptionary"
+              descriptor="Draw with your nose."
+              accent="tiptionary"
+              disabled
+            />
           </div>
         </section>
 

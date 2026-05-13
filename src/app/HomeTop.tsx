@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { GFButton } from "@/components/gameface";
 import styles from "./page.module.css";
 
 export function HomeTop() {
@@ -10,6 +11,11 @@ export function HomeTop() {
 
   return (
     <header className={styles.homeTopStrip}>
+      <div className={styles.homeLockup} aria-label="GAMEFACE">
+        <span className={styles.homeLogoGame}>GAME</span>
+        <span className={styles.homeLogoFace}>FACE</span>
+      </div>
+
       <div className={styles.homeTopRow}>
         <Link href="/profile" className={styles.homeProfile}>
           <div className={styles.homeAvatar} aria-hidden />
@@ -20,8 +26,17 @@ export function HomeTop() {
             </div>
           </div>
         </Link>
-        <span className={styles.homeWordmark}>GAMEFACE</span>
+        <div className={styles.homeTopRight}>
+          <span className={styles.homeFriendsOnline}>3 friends online</span>
+          <GFButton variant="ghost" className={styles.homeChallengeBtn} disabled title="Coming soon">
+            Challenge
+          </GFButton>
+          <Link href="/login" className={styles.homeAccountLink}>
+            Account
+          </Link>
+        </div>
       </div>
+
       <div className={styles.homeTopDivider} aria-hidden />
     </header>
   );
