@@ -35,10 +35,6 @@ export function WebcamFrame({
   const ac = accent ? accentClass[accent] : "";
   return (
     <div className={`${styles.wrap} ${v} ${ac} ${className ?? ""}`}>
-      <span className={styles.cornerTL} aria-hidden />
-      <span className={styles.cornerTR} aria-hidden />
-      <span className={styles.cornerBL} aria-hidden />
-      <span className={styles.cornerBR} aria-hidden />
       <div className={styles.inner}>{children}</div>
       {label ? <div className={styles.frameLabel}>{label}</div> : null}
     </div>

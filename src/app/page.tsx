@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GFButton, GFGameCard, GFBottomNav } from "@/components/gameface";
+import { GFGameCard, GFBottomNav } from "@/components/gameface";
 import { HomeTop } from "./HomeTop";
 import styles from "./page.module.css";
 
@@ -19,12 +19,6 @@ export default function Page() {
             <Link href="/match/random" className={styles.heroPrimary}>
               Random match
             </Link>
-            <GFButton variant="ghost" className={styles.heroGhost} disabled title="Coming soon">
-              Challenge friend
-            </GFButton>
-            <GFButton variant="ghost" className={styles.heroGhost} disabled title="Coming soon">
-              Party match
-            </GFButton>
           </div>
         </section>
 

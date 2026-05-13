@@ -1,25 +1,30 @@
 .wrap {
   position: relative;
   border-radius: var(--gf-radius-lg);
-  padding: 2px;
+  padding: 1px;
   background: linear-gradient(
     145deg,
-    rgba(255, 255, 255, 0.14),
-    rgba(255, 255, 255, 0.04) 40%,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.03) 45%,
     rgba(255, 255, 255, 0.08)
   );
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 60px var(--gf-frame-glow, rgba(56, 189, 248, 0.12));
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 40px var(--gf-frame-glow, rgba(56, 189, 248, 0.1));
   overflow: hidden;
+  transition:
+    transform var(--gf-duration-med) var(--gf-ease-out),
+    box-shadow var(--gf-duration-med) var(--gf-ease-out);
 }
 
 .inner {
   position: relative;
-  border-radius: calc(var(--gf-radius-lg) - 2px);
+  border-radius: calc(var(--gf-radius-lg) - 1px);
   min-height: 120px;
-  background: rgba(0, 0, 0, 0.35);
+  background: linear-gradient(180deg, rgba(8, 10, 18, 0.92), rgba(2, 3, 8, 0.88));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   overflow: hidden;
 }
 
@@ -32,93 +37,49 @@
 }
 
 .variantNeutral {
-  --gf-frame-glow: rgba(255, 255, 255, 0.06);
+  --gf-frame-glow: rgba(56, 189, 248, 0.08);
 }
 
 .accentYou {
   box-shadow:
-    0 0 0 1px rgba(56, 189, 248, 0.35),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 72px rgba(56, 189, 248, 0.18);
+    0 0 0 1px rgba(56, 189, 248, 0.45),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 44px rgba(56, 189, 248, 0.2);
 }
 
 .accentOpponent {
   box-shadow:
-    0 0 0 1px rgba(251, 113, 133, 0.35),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 72px rgba(251, 113, 133, 0.15);
+    0 0 0 1px rgba(251, 113, 133, 0.45),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 44px rgba(251, 113, 133, 0.16);
 }
 
 .accentCharades {
   box-shadow:
-    0 0 0 1px rgba(245, 158, 11, 0.35),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 56px var(--gf-accent-charades-soft);
+    0 0 0 1px rgba(245, 158, 11, 0.5),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 40px var(--gf-accent-charades-soft);
 }
 
 .accentStaring {
   box-shadow:
-    0 0 0 1px rgba(59, 130, 246, 0.35),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 56px var(--gf-accent-staring-soft);
+    0 0 0 1px rgba(59, 130, 246, 0.5),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 40px var(--gf-accent-staring-soft);
 }
 
 .accentFacepong {
   box-shadow:
-    0 0 0 1px rgba(34, 211, 238, 0.35),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 56px var(--gf-accent-facepong-soft);
+    0 0 0 1px rgba(34, 211, 238, 0.5),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 40px var(--gf-accent-facepong-soft);
 }
 
 .accentFacecard {
   box-shadow:
-    0 0 0 1px rgba(167, 139, 250, 0.35),
-    0 12px 40px rgba(0, 0, 0, 0.45),
-    0 0 56px var(--gf-accent-facecard-soft);
-}
-
-.cornerTL,
-.cornerTR,
-.cornerBL,
-.cornerBR {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.cornerTL {
-  top: 8px;
-  left: 8px;
-  border-right: none;
-  border-bottom: none;
-  border-radius: 4px 0 0 0;
-}
-
-.cornerTR {
-  top: 8px;
-  right: 8px;
-  border-left: none;
-  border-bottom: none;
-  border-radius: 0 4px 0 0;
-}
-
-.cornerBL {
-  bottom: 8px;
-  left: 8px;
-  border-right: none;
-  border-top: none;
-  border-radius: 0 0 0 4px;
-}
-
-.cornerBR {
-  bottom: 8px;
-  right: 8px;
-  border-left: none;
-  border-top: none;
-  border-radius: 0 0 4px 0;
+    0 0 0 1px rgba(167, 139, 250, 0.5),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 40px var(--gf-accent-facecard-soft);
 }
 
 .frameLabel {
@@ -128,26 +89,10 @@
   transform: translateX(-50%);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.85);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.75);
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 0 16px rgba(0, 0, 0, 0.9);
   pointer-events: none;
   z-index: 3;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .wrap {
-    animation: gfFramePulse 5s ease-in-out infinite;
-  }
-}
-
-@keyframes gfFramePulse {
-  0%,
-  100% {
-    filter: saturate(1);
-  }
-  50% {
-    filter: saturate(1.06);
-  }
 }

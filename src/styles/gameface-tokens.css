@@ -4,12 +4,22 @@
  */
 
 :root {
-  /* Canvas */
-  --gf-bg-0: #05070f;
-  --gf-bg-1: #0a1020;
-  --gf-bg-2: #121a30;
-  --gf-glow-ambient: rgba(96, 165, 250, 0.08);
-  --gf-glow-warm: rgba(251, 191, 36, 0.06);
+  /* Canvas — matte black + restrained blue / violet ambience */
+  --gf-bg-0: #030308;
+  --gf-bg-1: #06060c;
+  --gf-bg-2: #0c0e16;
+  --gf-glow-ambient: rgba(56, 165, 250, 0.07);
+  --gf-glow-purple: rgba(124, 92, 255, 0.055);
+  --gf-glow-warm: rgba(251, 113, 133, 0.04);
+
+  /* Glass + neon system */
+  --gf-glass-fill: rgba(6, 8, 14, 0.78);
+  --gf-glass-fill-soft: rgba(10, 12, 20, 0.55);
+  --gf-neon-blue: rgba(56, 189, 248, 0.75);
+  --gf-neon-blue-strong: rgba(56, 189, 248, 0.95);
+  --gf-neon-glow: 0 0 0 1px rgba(56, 189, 248, 0.35), 0 0 32px rgba(56, 189, 248, 0.12);
+  --gf-neon-glow-strong: 0 0 0 1px rgba(56, 189, 248, 0.55), 0 0 48px rgba(56, 189, 248, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
   /* Core duel identity */
   --gf-you: #38bdf8;
@@ -30,13 +40,13 @@
   /* Surfaces */
   --gf-surface-0: rgba(255, 255, 255, 0.04);
   --gf-surface-1: rgba(255, 255, 255, 0.07);
-  --gf-stroke: rgba(255, 255, 255, 0.12);
-  --gf-stroke-strong: rgba(255, 255, 255, 0.2);
+  --gf-stroke: rgba(255, 255, 255, 0.1);
+  --gf-stroke-strong: rgba(255, 255, 255, 0.18);
 
   /* Type */
-  --gf-text: rgba(255, 255, 255, 0.94);
-  --gf-text-muted: rgba(255, 255, 255, 0.62);
-  --gf-text-dim: rgba(255, 255, 255, 0.42);
+  --gf-text: rgba(255, 255, 255, 0.96);
+  --gf-text-muted: rgba(255, 255, 255, 0.58);
+  --gf-text-dim: rgba(255, 255, 255, 0.38);
 
   /* Geometry */
   --gf-radius-sm: 12px;

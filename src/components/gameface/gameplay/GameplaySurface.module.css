@@ -14,9 +14,9 @@
   flex-direction: column;
   box-sizing: border-box;
   background:
-    radial-gradient(ellipse 120% 90% at 50% -15%, rgba(56, 189, 248, 0.14), transparent 52%),
-    radial-gradient(ellipse 80% 55% at 100% 100%, rgba(251, 113, 133, 0.08), transparent 48%),
-    #020308;
+    radial-gradient(ellipse 120% 90% at 50% -15%, rgba(56, 189, 248, 0.1), transparent 52%),
+    radial-gradient(ellipse 80% 55% at 100% 100%, rgba(251, 113, 133, 0.06), transparent 48%),
+    var(--gf-bg-0);
   color: var(--gf-text);
   padding-left: env(safe-area-inset-left, 0);
   padding-right: env(safe-area-inset-right, 0);

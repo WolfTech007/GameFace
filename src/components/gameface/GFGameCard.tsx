@@ -22,7 +22,7 @@ export function GFGameCard({
 }: GFGameCardProps) {
   return (
     <Link href={href} className={styles.link}>
-      <WebcamFrame accent={accent} label={title}>
+      <WebcamFrame accent={accent} label={title} className={styles.cardSurface}>
         <div className={styles.placeholder} aria-hidden />
       </WebcamFrame>
       <div className={styles.meta}>
