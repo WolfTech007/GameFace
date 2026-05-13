@@ -71,6 +71,7 @@ function makeInitialNetState(): FacePongNetState {
     rematch: emptyRematchIntent(),
     rallyScore: 0,
     ball: { x: 0.5, y: 0.5, vx: 0.0, vy: 0.0 },
+    ballTint: "neutral",
     paddles: { hostX: 0.5, guestX: 0.5 },
     ready: { host: false, guest: false },
   };
@@ -85,6 +86,7 @@ function cloneNetState(s: FacePongNetState): FacePongNetState {
     rematch: { ...rm },
     rallyScore: s.rallyScore,
     ball: { ...s.ball },
+    ballTint: s.ballTint ?? "neutral",
     paddles: { ...s.paddles },
     ready: { ...r },
   };
@@ -326,6 +328,7 @@ export default function FacePong({
     const s = hostStateRef.current;
     s.phase = "playing";
     s.rallyScore = 0;
+    s.ballTint = "neutral";
     s.ball = { x: 0.5, y: 0.5, vx: 0.0, vy: 0.26 }; // slow start downward (slightly snappier)
     s.paddles.hostX = smoothedLocalPaddleRef.current;
     s.paddles.guestX = guestPaddleXRef.current;
@@ -380,6 +383,7 @@ export default function FacePong({
         const off = (s.ball.x - px) / (paddleW / 2);
         s.ball.vx += off * 0.16;
         s.rallyScore += 1;
+        s.ballTint = "red";
       } else if (s.ball.y < 0) {
         s.phase = "gameover";
         s.rematch = emptyRematchIntent();
@@ -395,6 +399,7 @@ export default function FacePong({
         const off = (s.ball.x - px) / (paddleW / 2);
         s.ball.vx += off * 0.16;
         s.rallyScore += 1;
+        s.ballTint = "blue";
       } else if (s.ball.y > 1) {
         s.phase = "gameover";
         s.rematch = emptyRematchIntent();
@@ -472,35 +477,61 @@ export default function FacePong({
     const botCx = state.paddles.hostX * w;
     const botCy = screenY(PADDLE_WORLD_Y_BOT);
 
-    // World B (guest / top paddle) — neon pink
+    /**
+     * Guest canvas is CSS-rotated 180°: world “top” draws on the physical bottom feed and vice versa.
+     * Swap draw colors so red always reads as the top (opponent / red neon) paddle on-screen, blue as bottom (you).
+     */
+    const swapNeonForRotation = roleRef.current === "guest";
+    const redFill = "rgba(255, 95, 130, 0.96)";
+    const redGlow = "rgba(255, 70, 110, 0.75)";
+    const blueFill = "rgba(70, 210, 255, 0.96)";
+    const blueGlow = "rgba(0, 190, 255, 0.72)";
+
+    const topFill = swapNeonForRotation ? blueFill : redFill;
+    const topGlow = swapNeonForRotation ? blueGlow : redGlow;
+    const botFill = swapNeonForRotation ? redFill : blueFill;
+    const botGlow = swapNeonForRotation ? redGlow : blueGlow;
+
+    // World B (guest / top of bitmap) — on-screen color matches opponent neon (red) for host, corrected for guest.
     ctx.save();
-    ctx.shadowColor = "rgba(255, 70, 110, 0.75)";
+    ctx.shadowColor = topGlow;
     ctx.shadowBlur = 16;
-    ctx.fillStyle = "rgba(255, 95, 130, 0.96)";
+    ctx.fillStyle = topFill;
     roundRect(ctx, topCx - paddleW / 2, topCy - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
     ctx.restore();
 
-    // World A (host / bottom paddle) — neon cyan
+    // World A (host / bottom of bitmap)
     ctx.save();
-    ctx.shadowColor = "rgba(0, 190, 255, 0.72)";
+    ctx.shadowColor = botGlow;
     ctx.shadowBlur = 16;
-    ctx.fillStyle = "rgba(70, 210, 255, 0.96)";
+    ctx.fillStyle = botFill;
     roundRect(ctx, botCx - paddleW / 2, botCy - paddleH / 2, paddleW, paddleH, padR);
     ctx.fill();
     ctx.restore();
+
+    const tint = state.ballTint ?? "neutral";
+    let ballFill = "rgba(255,255,255,0.95)";
+    let ballHalo = "rgba(200, 210, 230, 0.2)";
+    if (tint === "red") {
+      ballFill = "rgba(255, 95, 130, 0.98)";
+      ballHalo = "rgba(255, 70, 110, 0.28)";
+    } else if (tint === "blue") {
+      ballFill = "rgba(95, 220, 255, 0.98)";
+      ballHalo = "rgba(0, 190, 255, 0.26)";
+    }
 
     // ball (same world coords on both clients)
     const bx = state.ball.x * w;
     const by = screenY(state.ball.y);
     const ballR = Math.max(6, Math.round(w * 0.018));
     ctx.beginPath();
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.fillStyle = ballFill;
     ctx.arc(bx, by, ballR, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.beginPath();
-    ctx.fillStyle = "rgba(130, 220, 255, 0.18)";
+    ctx.fillStyle = ballHalo;
     ctx.arc(bx, by, ballR * 2.2, 0, Math.PI * 2);
     ctx.fill();
   }

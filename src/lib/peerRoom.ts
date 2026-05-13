@@ -19,6 +19,8 @@ export type GuestToHostMsg =
   | { t: "ready"; ready: boolean }
   | { t: "rematch"; want: boolean };
 
+export type FacePongBallTint = "neutral" | "red" | "blue";
+
 export type FacePongNetState = {
   phase: "lobby" | "playing" | "gameover";
   /** Increments when a rematch resets the session (ignore stale UI). */
@@ -26,6 +28,8 @@ export type FacePongNetState = {
   rematch: { host: boolean; guest: boolean };
   rallyScore: number;
   ball: { x: number; y: number; vx: number; vy: number };
+  /** Last paddle hit (red = top / guest world, blue = bottom / host world); drives ball color. */
+  ballTint: FacePongBallTint;
   paddles: { hostX: number; guestX: number };
   /** Lobby only — both must be true for host to start (synced from host). */
   ready: { host: boolean; guest: boolean };

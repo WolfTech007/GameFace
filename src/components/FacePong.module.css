@@ -9,13 +9,13 @@
 }
 
 .frame {
-  /* Wide cinematic arena — near full-bleed width, capped height for dvh fit */
-  --arena-w: min(760px, calc(100vw - 32px));
-  width: var(--arena-w);
+  /* Two stacked 1:1 camera squares — side limited by width or half remaining viewport height */
+  --sq: min(min(760px, calc(100vw - 32px)), calc((min(100dvh, 100svh) - 112px) / 2));
+  width: var(--sq);
   max-width: 100%;
-  height: min(calc(100dvh - 108px), calc(var(--arena-w) * 0.92));
-  max-height: min(calc(100dvh - 96px), calc(100svh - 88px));
-  min-height: 280px;
+  height: calc(var(--sq) * 2);
+  max-height: calc(100dvh - 96px);
+  min-height: 0;
   position: relative;
   border-radius: 24px;
   overflow: hidden;
