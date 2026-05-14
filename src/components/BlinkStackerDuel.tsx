@@ -38,6 +38,9 @@ import styles from "./BlinkStackerDuel.module.css";
 const QUEUE_POLL_MS = 600;
 const DEFAULT_INTRO = "/blink-stacker-duel";
 const DUEL_BLINK_COOLDOWN_MS = 250;
+const MIN_BRICK_PX = 40;
+const MIN_BRICK_H_PX = 24;
+const DEFAULT_START_WN = 0.65;
 
 type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
@@ -141,7 +144,11 @@ function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: Blink
   ctx.clearRect(0, 0, w, h);
   const arenaW = w * 0.88;
   const arenaLeft = (w - arenaW) / 2;
-  const { floorY, blockH, gap, floatExtra } = layoutFromCanvasHeight(h);
+  const raw = layoutFromCanvasHeight(h);
+  const floorY = raw.floorY;
+  const blockH = Math.max(MIN_BRICK_H_PX, raw.blockH);
+  const gap = Math.max(5, raw.gap);
+  const floatExtra = raw.floatExtra;
   const cam = Number.isFinite(s.cam) ? s.cam : 0;
 
   ctx.save();
@@ -153,14 +160,14 @@ function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: Blink
   s.tower.forEach((seg, i) => {
     const bottomY = floorY - i * (blockH + gap);
     const x = arenaLeft + seg.ln * arenaW;
-    const bw = seg.wn * arenaW;
+    const bw = Math.max(MIN_BRICK_PX, seg.wn * arenaW);
     drawBrick(ctx, x, bottomY - blockH, bw, blockH, seg.o, {});
   });
 
   if (s.phase === "moving") {
     const floatBottom = floorY - s.tower.length * (blockH + gap) - floatExtra;
-    const x = arenaLeft + (s.mcn - s.mwn / 2) * arenaW;
-    const bw = s.mwn * arenaW;
+    const bw = Math.max(MIN_BRICK_PX, s.mwn * arenaW);
+    const x = arenaLeft + s.mcn * arenaW - bw / 2;
     const owner = s.activeBlue ? "blue" : "red";
     drawBrick(ctx, x, floatBottom - blockH, bw, blockH, owner, { hot: true, pulse: s.pulse });
   }
@@ -234,6 +241,7 @@ export default function BlinkStackerDuel({
   const [, bumpUi] = useReducer((x: number) => x + 1, 0);
   const lastGuestUiBumpRef = useRef(0);
   const lastHostUiBumpRef = useRef(0);
+  const [frameSize, setFrameSize] = useState({ width: 360, height: 640 });
 
   function maybeBumpGuestUi(force = false) {
     const t = nowMs();
@@ -743,6 +751,24 @@ export default function BlinkStackerDuel({
   }, []);
 
   useEffect(() => {
+    const compute = () => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let width = Math.min(vw * 0.92, 420);
+      let height = width * (16 / 9);
+      const availableHeight = Math.max(300, vh - 170);
+      if (height > availableHeight) {
+        height = availableHeight;
+        width = height * (9 / 16);
+      }
+      setFrameSize({ width: Math.floor(width), height: Math.floor(height) });
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    return () => window.removeEventListener("resize", compute);
+  }, []);
+
+  useEffect(() => {
     if (!showArena) return;
     const stage = stageRef.current;
     const canvas = canvasRef.current;
@@ -796,9 +822,34 @@ export default function BlinkStackerDuel({
       // is unmounted — FacePong keeps its surface mounted; here we tick time transitions without a canvas.
       if (isHost && rt && opponentConnected) {
         const s = rt.state;
+        const arenaW = Math.max(1, (canvas?.width ?? w) * 0.88);
+        const minWn = Math.min(0.95, MIN_BRICK_PX / arenaW);
+        if (!Number.isFinite(s.mwn) || s.mwn <= 0) {
+          log("invalid moving width detected — reset", { mwn: s.mwn });
+          s.mwn = DEFAULT_START_WN;
+          s.mcn = 0.5;
+        }
+        if (!Number.isFinite(s.mcn)) s.mcn = 0.5;
+        s.mwn = Math.max(minWn, Math.min(0.95, s.mwn));
+        s.mcn = Math.max(s.mwn / 2, Math.min(1 - s.mwn / 2, s.mcn));
+
         if (s.brickEpoch !== lastSeenBrickEpochRef.current) {
           lastSeenBrickEpochRef.current = s.brickEpoch;
           lastBrickEpochStoppedRef.current = -1;
+          const l = layoutFromCanvasHeight(h);
+          const blockH = Math.max(MIN_BRICK_H_PX, l.blockH);
+          const gap = Math.max(5, l.gap);
+          const floatBottom = l.floorY - s.tower.length * (blockH + gap) - l.floatExtra;
+          const widthPx = Math.max(MIN_BRICK_PX, s.mwn * arenaW);
+          const xPx = ((w - arenaW) / 2) + s.mcn * arenaW - widthPx / 2;
+          log("new turn block", {
+            x: Math.round(xPx),
+            y: Math.round(floatBottom - blockH),
+            width: Math.round(widthPx),
+            height: Math.round(blockH),
+            speed: Math.round(s.speedPx),
+            activePlayer: s.activeBlue ? "blue" : "red",
+          });
         }
 
         const now = nowMs();
@@ -823,7 +874,6 @@ export default function BlinkStackerDuel({
           s.cd = countdownSecondsLeft(now, s.cde);
         }
         if (s.phase === "moving" && canvas) {
-          const arenaW = canvas.width * 0.88;
           hostAdvanceMoving(s, dt, arenaW);
         }
         if (s.phase === "moving" || s.phase === "turn_banner" || s.phase === "gameover" || s.phase === "countdown") {
@@ -936,9 +986,17 @@ export default function BlinkStackerDuel({
             )}
           </header>
 
-          <div className={styles.main}>
+          <div className={styles.main} style={{ paddingBottom: showArena ? "12px" : undefined }}>
             {showArena ? (
-              <div ref={stageRef} className={styles.stage}>
+              <div
+                ref={stageRef}
+                className={styles.stage}
+                style={{ width: `${frameSize.width}px`, height: `${frameSize.height}px` }}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  tryStopRef.current();
+                }}
+              >
                 <div className={styles.remoteShell}>
                   <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
                 </div>
@@ -1047,7 +1105,7 @@ export default function BlinkStackerDuel({
         </div>
       </main>
 
-      <GFBottomNav activeHref="/" />
+      {uiPhase !== "playing" ? <GFBottomNav activeHref="/" /> : null}
     </div>
   );
 }

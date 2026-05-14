@@ -137,6 +137,24 @@ export function hostApplyStop(rt: HostRuntime, now: number): { miss: boolean } {
   const target = { left: below.ln, width: below.wn };
   const { overlapLen, overlapLeft } = horizontalOverlap(moving, target);
   const frac = overlapFractionOfMoving(overlapLen, s.mwn);
+  if (!Number.isFinite(overlapLen) || !Number.isFinite(overlapLeft) || !Number.isFinite(frac)) {
+    console.error("[BlinkStackerDuel] invalid overlap calculation, resetting round", {
+      overlapLen,
+      overlapLeft,
+      frac,
+      mcn: s.mcn,
+      mwn: s.mwn,
+      belowLn: below.ln,
+      belowWn: below.wn,
+    });
+    s.mwn = 0.65;
+    s.mcn = 0.5;
+    s.vx = Math.random() < 0.5 ? 1 : -1;
+    s.phase = "turn_banner";
+    s.banner = s.activeBlue ? "BLUE TURN" : "RED TURN";
+    s.tbe = now + TURN_BANNER_MS;
+    return { miss: false };
+  }
 
   if (frac < OVERLAP_WIN_MIN) {
     s.loser = s.activeBlue ? "blue" : "red";
