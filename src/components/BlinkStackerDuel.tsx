@@ -13,7 +13,6 @@ import {
 import { RematchBar } from "@/components/RematchBar";
 import { rematchBothWant } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
-import { ensureProfile } from "@/lib/gameface/profileStore";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
 import { combinedEar, createBlinkEdgeDetector } from "@/lib/blinkStacker/ear";
@@ -182,6 +181,8 @@ export default function BlinkStackerDuel({
 }: BlinkStackerDuelProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
+  /** Same as FacePong: one stable queue id from GameFace profile (not ad-hoc ensureProfile calls). */
+  const clientId = profile.userId;
 
   const initialPhase: UiPhase = autoJoinPublicQueue || fromRandomMatch ? "matchmaking" : "menu";
   const [uiPhase, setUiPhase] = useState<UiPhase>(initialPhase);
@@ -271,10 +272,10 @@ export default function BlinkStackerDuel({
   }
 
   async function leaveQueue() {
-    const clientId = ensureProfile().userId;
     try {
       await fetch("/api/blink-stacker-duel/queue", {
         method: "POST",
+        cache: "no-store",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientId, action: "leave" }),
       });
@@ -578,16 +579,6 @@ export default function BlinkStackerDuel({
     const peer = await createGuestPeer();
     peerRef.current = peer;
 
-    guestAnswerCalls(peer as never, stream, (incoming) => {
-      incoming.on("stream", (remoteStream: MediaStream) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          void remoteVideoRef.current.play();
-        }
-        log("opponent camera stream (guest, incoming call)");
-      });
-    });
-
     const conn = await connectGuestWithRetry(peer as never, rid);
     dataRef.current = conn;
     setOpponentConnected(true);
@@ -628,6 +619,16 @@ export default function BlinkStackerDuel({
         remoteVideoRef.current.srcObject = remoteStream;
         void remoteVideoRef.current.play();
       }
+    });
+
+    guestAnswerCalls(peer as never, stream, (incoming) => {
+      incoming.on("stream", (remoteStream: MediaStream) => {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          void remoteVideoRef.current.play();
+        }
+        log("opponent camera stream (guest, incoming call)");
+      });
     });
   }
 
@@ -674,15 +675,16 @@ export default function BlinkStackerDuel({
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
     }
-    log("entering queue");
+    log("entering queue", { clientId });
     setStatus("Searching for opponent…");
     setUiPhase("matchmaking");
 
-    const clientId = ensureProfile().userId;
+    const joinBody = JSON.stringify({ clientId, action: "join" });
     const res = await fetch("/api/blink-stacker-duel/queue", {
       method: "POST",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, action: "join" }),
+      body: joinBody,
     });
     const data = await res.json();
     if (data.matched) {
@@ -692,15 +694,25 @@ export default function BlinkStackerDuel({
     }
 
     matchPollRef.current = window.setInterval(async () => {
-      const r = await fetch(`/api/blink-stacker-duel/queue?clientId=${encodeURIComponent(clientId)}`);
-      const j = await r.json();
-      if (j.matched) {
-        if (matchPollRef.current) {
-          window.clearInterval(matchPollRef.current);
-          matchPollRef.current = null;
+      try {
+        // POST (not GET): same code path as initial join (`existing` match), avoids cached GET responses on some CDNs/clients.
+        const r = await fetch("/api/blink-stacker-duel/queue", {
+          method: "POST",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: joinBody,
+        });
+        const j = await r.json();
+        if (j.matched) {
+          if (matchPollRef.current) {
+            window.clearInterval(matchPollRef.current);
+            matchPollRef.current = null;
+          }
+          log("matched from poll");
+          await applyMatch(j.peerRoomId as string, j.role as Role);
         }
-        log("matched from poll");
-        await applyMatch(j.peerRoomId as string, j.role as Role);
+      } catch (e) {
+        log("queue poll error", e);
       }
     }, QUEUE_POLL_MS);
   }
@@ -708,8 +720,24 @@ export default function BlinkStackerDuel({
   useEffect(() => {
     if (!autoJoinPublicQueue) return;
     void findMatch();
+    return () => {
+      if (matchPollRef.current) {
+        window.clearInterval(matchPollRef.current);
+        matchPollRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoJoinPublicQueue]);
+
+  /** Always clear queue poll on unmount (menu “Find Match” has no autoJoin effect cleanup). */
+  useEffect(() => {
+    return () => {
+      if (matchPollRef.current) {
+        window.clearInterval(matchPollRef.current);
+        matchPollRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const stage = stageRef.current;
