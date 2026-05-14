@@ -1,5 +1,5 @@
-import { PausedForLaunchPage } from "@/components/gameface/PausedForLaunchPage";
+import { GameIntro } from "@/components/gameface/GameIntro";
 
 export default function FaceCardIntroPage() {
-  return <PausedForLaunchPage title="Face Card" />;
+  return <GameIntro slug="facecard" />;
 }

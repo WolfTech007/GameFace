@@ -19,6 +19,7 @@ import type { FaceCardNetMsg } from "@/lib/facecardProtocol";
 import { RematchBar } from "@/components/RematchBar";
 import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
@@ -88,7 +89,7 @@ export type FaceCardProps = {
 
 export default function FaceCard({
   autoJoinPublicQueue = false,
-  fromRandomMatch: _fromRandomMatch = false,
+  fromRandomMatch = false,
   introHref,
 }: FaceCardProps) {
   const router = useRouter();
@@ -100,7 +101,9 @@ export default function FaceCard({
   const localOverlayRef = useRef<HTMLCanvasElement | null>(null);
   const remoteOverlayRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [phase, setPhase] = useState<Phase>(() => (autoJoinPublicQueue ? "queue" : "intro"));
+  const [phase, setPhase] = useState<Phase>(() =>
+    autoJoinPublicQueue || fromRandomMatch ? "queue" : "intro",
+  );
   const phaseRef = useRef<Phase>("intro");
   useEffect(() => {
     phaseRef.current = phase;
@@ -111,7 +114,9 @@ export default function FaceCard({
     nameRef.current = profile.displayName.trim().slice(0, 24) || "Player";
   }, [profile.displayName]);
 
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(() =>
+    autoJoinPublicQueue ? "Finding a stranger…" : fromRandomMatch ? "Connecting…" : "",
+  );
   const [opponentName, setOpponentName] = useState<string | null>(null);
 
   const [role, setRole] = useState<Role | null>(null);
@@ -582,6 +587,10 @@ export default function FaceCard({
     setPhase("lobby");
   }
 
+  useConsumePendingMatch("facecard", (p) => {
+    void applyMatch(p.peerRoomId, p.role, "");
+  });
+
   async function findMatch() {
     setPhase("queue");
     setStatus("Finding a stranger…");
@@ -812,8 +821,9 @@ export default function FaceCard({
   const displayLocalName = profile.displayName.trim() || "Guest";
   const displayRemoteName = opponentName?.trim() || "Connecting";
 
-  /** Intro with Find Match — only when not entering from GameIntro (?queue=1). */
-  const showLegacyIntro = (phase === "intro" || phase === "queue") && !autoJoinPublicQueue;
+  /** Intro with Find Match — only on the legacy in-component intro (not GameIntro / random match). */
+  const showLegacyIntro =
+    (phase === "intro" || (phase === "queue" && !fromRandomMatch)) && !autoJoinPublicQueue;
   const showGame =
     phase === "peer_setup" ||
     phase === "lobby" ||
@@ -850,19 +860,29 @@ export default function FaceCard({
         </div>
       ) : null}
 
-      {phase === "queue" && autoJoinPublicQueue ? (
+      {phase === "queue" && (autoJoinPublicQueue || fromRandomMatch) ? (
         <div className={gp.fullOverlay}>
           <div className={gp.glassPanel}>
             <p className={gp.resultKicker}>Face card</p>
             <p className={gp.resultTitle} style={{ fontSize: "clamp(20px, 5vw, 26px)", marginTop: "6px" }}>
-              Finding a player…
+              {fromRandomMatch && !autoJoinPublicQueue ? "Connecting…" : "Finding a player…"}
             </p>
             <p className={gp.resultDetail} style={{ marginTop: "10px", textAlign: "center" }}>
-              {status || "Hang tight — pairing you with the next available player."}
+              {status ||
+                (fromRandomMatch && !autoJoinPublicQueue
+                  ? "Pairing you with your random match."
+                  : "Hang tight — pairing you with the next available player.")}
             </p>
-            <button type="button" className={gp.surfacePillGhost} style={{ marginTop: "18px", width: "100%" }} onClick={() => void cancelQueueSearch()}>
-              Cancel
-            </button>
+            {autoJoinPublicQueue ? (
+              <button
+                type="button"
+                className={gp.surfacePillGhost}
+                style={{ marginTop: "18px", width: "100%" }}
+                onClick={() => void cancelQueueSearch()}
+              >
+                Cancel
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
