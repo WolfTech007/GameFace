@@ -275,7 +275,7 @@ export default function BlinkStackerDuel({
     setHostView(null);
     setGuestView(null);
     guestStateRef.current = null;
-    setMatchRole(null);
+    /** Do not clear `matchRole` here — `setupPeer` calls this while `applyMatch` is wiring a new session. */
   }, []);
 
   async function leaveQueue() {
@@ -382,6 +382,8 @@ export default function BlinkStackerDuel({
         const msg = raw as DuelNetMsg;
         if (msg.t === "bsd_hello") {
           setOpponentName(msg.name);
+          lastBroadcastRef.current = 0;
+          broadcastIfHost();
           return;
         }
         if (msg.t === "bsd_ready") {
@@ -487,9 +489,9 @@ export default function BlinkStackerDuel({
       const conn = await waitForHostConnection(peer as never);
       dataRef.current = conn as never;
       wireHost(conn as never);
-      conn.on("open", () => {
-        sendNet({ t: "bsd_hello", name: nameRef.current || "Player" });
-      });
+      const sendHello = () => sendNet({ t: "bsd_hello", name: nameRef.current || "Player" });
+      if (conn.open) sendHello();
+      else conn.on("open", sendHello);
     } else {
       const peer = await createGuestPeer();
       peerRef.current = peer;
@@ -504,9 +506,9 @@ export default function BlinkStackerDuel({
       const conn = await connectGuestWithRetry(peer as never, roomId);
       dataRef.current = conn as never;
       wireGuest(conn as never);
-      conn.on("open", () => {
-        sendNet({ t: "bsd_hello", name: nameRef.current || "Player" });
-      });
+      const sendHello = () => sendNet({ t: "bsd_hello", name: nameRef.current || "Player" });
+      if (conn.open) sendHello();
+      else conn.on("open", sendHello);
       const call = (peer as { call: (id: string, s: MediaStream) => { on: (ev: string, fn: (x: MediaStream) => void) => void } }).call(
         roomId,
         stream,
@@ -707,6 +709,7 @@ export default function BlinkStackerDuel({
   function leaveMatch() {
     void leaveQueue();
     cleanupPeer();
+    roleRef.current = null;
     setMatchRole(null);
     router.push(introHref ?? DEFAULT_INTRO);
   }
