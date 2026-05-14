@@ -51,6 +51,13 @@ export default function Page() {
               descriptor="Guess the name on your forehead."
               accent="facecard"
             />
+            <GFGameCard
+              href="/blink-stacker"
+              title="Blink Stacker"
+              descriptor="Solo · blink timing tower."
+              accent="blinkstacker"
+              mode="solo"
+            />
           </div>
         </section>
 

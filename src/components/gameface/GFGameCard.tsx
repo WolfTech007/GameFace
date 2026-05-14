@@ -8,6 +8,7 @@ export type GFGameCardAccent =
   | "staring"
   | "facepong"
   | "facecard"
+  | "blinkstacker"
   | "friends"
   | "tiptionary";
 
@@ -18,6 +19,8 @@ export type GFGameCardProps = {
   accent: GFGameCardAccent;
   /** When true, card is visual-only (no navigation) — e.g. unreleased game. */
   disabled?: boolean;
+  /** Solo / practice games use a different CTA than 1v1 matchmaking. */
+  mode?: "match" | "solo";
 };
 
 const ACCENT_CLASS: Record<GFGameCardAccent, string> = {
@@ -26,6 +29,7 @@ const ACCENT_CLASS: Record<GFGameCardAccent, string> = {
   staring: styles.accentStaring,
   facepong: styles.accentFacepong,
   facecard: styles.accentFacecard,
+  blinkstacker: styles.accentBlinkstacker,
   friends: styles.accentFriends,
   tiptionary: styles.accentTiptionary,
 };
@@ -36,13 +40,16 @@ const ACCENT_ICON: Record<GFGameCardAccent, string> = {
   staring: "👁️",
   facepong: "🏓",
   facecard: "🎴",
+  blinkstacker: "▣",
   friends: "👥",
   tiptionary: "👃",
 };
 
-export function GFGameCard({ href, title, descriptor, accent, disabled }: GFGameCardProps) {
+export function GFGameCard({ href, title, descriptor, accent, disabled, mode = "match" }: GFGameCardProps) {
   const ac = ACCENT_CLASS[accent];
   const icon = ACCENT_ICON[accent];
+  const playLabel = mode === "solo" ? "PLAY" : "FIND MATCH";
+  const ariaAction = mode === "solo" ? "Play solo." : "Find match.";
 
   const body = (
     <>
@@ -54,7 +61,7 @@ export function GFGameCard({ href, title, descriptor, accent, disabled }: GFGame
         <span className={styles.cardDesc}>{descriptor}</span>
       </span>
       <span className={styles.playPill} aria-hidden>
-        <span className={styles.playLabel}>FIND MATCH</span>
+        <span>{playLabel}</span>
         <span className={styles.playArrow}>→</span>
       </span>
     </>
@@ -76,7 +83,7 @@ export function GFGameCard({ href, title, descriptor, accent, disabled }: GFGame
   }
 
   return (
-    <Link href={href} className={rootClass} aria-label={`${title}. ${descriptor}. Find match.`}>
+    <Link href={href} className={rootClass} aria-label={`${title}. ${descriptor}. ${ariaAction}`}>
       {body}
     </Link>
   );
