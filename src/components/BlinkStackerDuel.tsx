@@ -1,15 +1,8 @@
 "use client";
 
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
+import React, { useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { GFBottomNav } from "@/components/gameface/GFBottomNav";
-import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
-import { ensureProfile } from "@/lib/gameface/profileStore";
-import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
-import { BLINK_COOLDOWN_MS } from "@/lib/blinkStacker/constants";
-import { combinedEar, createBlinkEdgeDetector } from "@/lib/blinkStacker/ear";
-import { layoutFromCanvasHeight } from "@/lib/blinkStacker/camera";
 import {
   connectGuestToHost,
   createGuestPeer,
@@ -17,26 +10,46 @@ import {
   guestAnswerCalls,
   waitForHostConnection,
 } from "@/lib/peerRoom";
+import { RematchBar } from "@/components/RematchBar";
+import { rematchBothWant } from "@/lib/rematchSync";
+import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { ensureProfile } from "@/lib/gameface/profileStore";
+import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
+import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
+import { combinedEar, createBlinkEdgeDetector } from "@/lib/blinkStacker/ear";
+import { layoutFromCanvasHeight } from "@/lib/blinkStacker/camera";
+import type { BlinkStackerDuelNetState, DuelTowerSeg, GuestToHostDuelMsg, HostToGuestDuelMsg } from "@/lib/blinkStackerDuel/netTypes";
 import {
+  cloneDuelState,
   countdownSecondsLeft,
   createHostRuntime,
   hostAdvanceMoving,
   hostApplyStop,
-  hostSpawnMissParticles,
   hostTickTimeTransitions,
   hostUpdateCamera,
   resetHostRuntime,
-  type DuelParticle,
   type HostRuntime,
 } from "@/lib/blinkStackerDuel/hostSim";
-import type { DuelNetMsg, DuelStatePayload } from "@/lib/blinkStackerDuel/protocol";
+import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import { GFBottomNav } from "@/components/gameface/GFBottomNav";
+import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
+import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 import styles from "./BlinkStackerDuel.module.css";
-
-type LocalPhase = "intro" | "queue" | "peer_setup" | "arena";
-type Role = "host" | "guest";
 
 const QUEUE_POLL_MS = 600;
 const DEFAULT_INTRO = "/blink-stacker-duel";
+const DUEL_BLINK_COOLDOWN_MS = 250;
+
+type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
+type Role = "host" | "guest";
+
+function log(...args: unknown[]) {
+  console.log("[BlinkStackerDuel]", ...args);
+}
+
+function nowMs() {
+  return performance.now();
+}
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
@@ -56,7 +69,7 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
       lastErr = e;
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error("Could not connect to host.");
+  throw lastErr instanceof Error ? lastErr : new Error("Could not connect to opponent.");
 }
 
 function pathRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -80,11 +93,11 @@ function drawBrick(
   yTop: number,
   w: number,
   h: number,
-  o: DuelStatePayload["tower"][0]["o"],
-  opts: { pulse?: number; hot?: boolean },
+  o: DuelTowerSeg["o"],
+  opts: { hot?: boolean; pulse?: number },
 ) {
-  const pulse = opts.pulse ?? 0;
   const hot = opts.hot ?? false;
+  const pulse = opts.pulse ?? 0;
   const g = ctx.createLinearGradient(x, yTop, x + w, yTop + h);
   if (o === "blue") {
     g.addColorStop(0, `rgba(30, 80, 120, ${0.92})`);
@@ -125,14 +138,7 @@ function drawBrick(
   ctx.shadowBlur = 0;
 }
 
-function drawScene(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  s: DuelStatePayload,
-  particles: DuelParticle[],
-  shake: boolean,
-) {
+function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: BlinkStackerDuelNetState) {
   ctx.clearRect(0, 0, w, h);
   const arenaW = w * 0.88;
   const arenaLeft = (w - arenaW) / 2;
@@ -140,10 +146,6 @@ function drawScene(
   const cam = s.cam;
 
   ctx.save();
-  if (shake) {
-    const t = performance.now() / 1000;
-    ctx.translate(Math.sin(t * 80) * 3, Math.cos(t * 73) * 2);
-  }
   ctx.translate(0, cam);
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
@@ -160,17 +162,8 @@ function drawScene(
     const floatBottom = floorY - s.tower.length * (blockH + gap) - floatExtra;
     const x = arenaLeft + (s.mcn - s.mwn / 2) * arenaW;
     const bw = s.mwn * arenaW;
-    const owner = s.abi ? "blue" : "red";
-    drawBrick(ctx, x, floatBottom - blockH, bw, blockH, owner, { hot: true, pulse: s.pp });
-  }
-
-  for (const p of particles) {
-    if (p.life <= 0) continue;
-    const a = Math.max(0, Math.min(1, p.life));
-    ctx.fillStyle = p.hue === "red" ? `rgba(251, 99, 99, ${0.8 * a})` : `rgba(56, 189, 248, ${0.8 * a})`;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 4 * a + 1, 0, Math.PI * 2);
-    ctx.fill();
+    const owner = s.activeBlue ? "blue" : "red";
+    drawBrick(ctx, x, floatBottom - blockH, bw, blockH, owner, { hot: true, pulse: s.pulse });
   }
 
   ctx.restore();
@@ -184,99 +177,98 @@ export type BlinkStackerDuelProps = {
 
 export default function BlinkStackerDuel({
   autoJoinPublicQueue = false,
-  fromRandomMatch: _fromRandomMatch = false,
+  fromRandomMatch = false,
   introHref,
 }: BlinkStackerDuelProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
 
-  const [localPhase, setLocalPhase] = useState<LocalPhase>(() => (autoJoinPublicQueue ? "queue" : "intro"));
-  const localPhaseRef = useRef(localPhase);
+  const initialPhase: UiPhase = autoJoinPublicQueue || fromRandomMatch ? "matchmaking" : "menu";
+  const [uiPhase, setUiPhase] = useState<UiPhase>(initialPhase);
+  const uiPhaseRef = useRef<UiPhase>(initialPhase);
   useEffect(() => {
-    localPhaseRef.current = localPhase;
-  }, [localPhase]);
-  const [status, setStatus] = useState("");
-  const [opponentName, setOpponentName] = useState<string | null>(null);
-  const [localReady, setLocalReady] = useState(false);
-  const [remoteReady, setRemoteReady] = useState(false);
-  const [uiShake, setUiShake] = useState(false);
-  const [showPerfect, setShowPerfect] = useState(false);
+    uiPhaseRef.current = uiPhase;
+  }, [uiPhase]);
 
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
-  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const peerRef = useRef<{ destroy?: () => void } | null>(null);
-  const dataRef = useRef<{ open?: boolean; send: (m: DuelNetMsg) => void } | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
   const roleRef = useRef<Role | null>(null);
-  const nameRef = useRef(profile.displayName.trim().slice(0, 24) || "Player");
   useEffect(() => {
-    nameRef.current = profile.displayName.trim().slice(0, 24) || "Player";
-  }, [profile.displayName]);
+    roleRef.current = role;
+  }, [role]);
 
-  const [hostView, setHostView] = useState<DuelStatePayload | null>(null);
-  const [guestView, setGuestView] = useState<DuelStatePayload | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [status, setStatus] = useState(() =>
+    autoJoinPublicQueue ? "Searching for opponent…" : fromRandomMatch ? "Connecting…" : "Idle",
+  );
+  const [opponentConnected, setOpponentConnected] = useState(false);
+  const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
 
-  const hostRtRef = useRef<HostRuntime | null>(null);
-  const guestStateRef = useRef<DuelStatePayload | null>(null);
-  const guestParticlesRef = useRef<DuelParticle[]>([]);
-  const lastBroadcastRef = useRef(0);
-  const allowBlinkRef = useRef(false);
-  const [matchRole, setMatchRole] = useState<Role | null>(null);
-  const landmarkerRef = useRef<Awaited<ReturnType<typeof createFaceLandmarker>> | null>(null);
-  const blinkDetRef = useRef<ReturnType<typeof createBlinkEdgeDetector> | null>(null);
-  const reduceMotionRef = useRef(false);
-
+  const peerRef = useRef<any>(null);
+  const dataRef = useRef<any>(null);
   const matchPollRef = useRef<number | null>(null);
 
-  const sendNet = useCallback((m: DuelNetMsg) => {
-    const c = dataRef.current as { open?: boolean; send?: (x: DuelNetMsg) => void } | null;
-    if (c?.open && c.send) c.send(m);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const hostRtRef = useRef<HostRuntime | null>(null);
+  const duelNetRef = useRef<BlinkStackerDuelNetState>(cloneDuelState(createHostRuntime().state));
+  const hostSeqRef = useRef(0);
+  const lastGuestSeqRef = useRef(-1);
+  const lastPlayBroadcastMsRef = useRef(0);
+  const lastBrickEpochStoppedRef = useRef(-1);
+  const lastSeenBrickEpochRef = useRef(-1);
+  const lastLoopRef = useRef<number | null>(null);
+
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const landmarkerRef = useRef<Awaited<ReturnType<typeof createFaceLandmarker>> | null>(null);
+  const blinkDetRef = useRef<ReturnType<typeof createBlinkEdgeDetector> | null>(null);
+  const guestBrickEpochRef = useRef(0);
+  const reduceMotionRef = useRef(false);
+
+  const [, bumpUi] = useReducer((x: number) => x + 1, 0);
+  const lastGuestUiBumpRef = useRef(0);
+  const lastHostUiBumpRef = useRef(0);
+
+  function maybeBumpGuestUi(force = false) {
+    const t = nowMs();
+    if (!force && t - lastGuestUiBumpRef.current < 80) return;
+    lastGuestUiBumpRef.current = t;
+    bumpUi();
+  }
+
+  useEffect(() => {
+    reduceMotionRef.current =
+      typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
   }, []);
 
-  const broadcastIfHost = useCallback(() => {
-    if (roleRef.current !== "host") return;
-    const rt = hostRtRef.current;
-    const conn = dataRef.current;
-    if (!rt || !conn?.open) return;
-    const now = performance.now();
-    if (now - lastBroadcastRef.current < 33) return;
-    lastBroadcastRef.current = now;
-    const s = rt.state;
-    if (s.phase === "countdown" && s.cde != null) {
-      s.cd = countdownSecondsLeft(now, s.cde);
-    }
-    const snap = { ...s };
-    setHostView(snap);
-    sendNet({ t: "bsd_state", s: snap });
-  }, [sendNet]);
+  function getDrawState(): BlinkStackerDuelNetState {
+    if (roleRef.current === "host" && hostRtRef.current) return hostRtRef.current.state;
+    return duelNetRef.current;
+  }
 
-  const cleanupPeer = useCallback(() => {
-    if (matchPollRef.current) {
-      clearInterval(matchPollRef.current);
-      matchPollRef.current = null;
+  async function ensureLocalCamera() {
+    if (localStreamRef.current) return localStreamRef.current;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: "user",
+        width: { ideal: 720 },
+        height: { ideal: 1280 },
+      },
+    });
+    localStreamRef.current = stream;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+      await localVideoRef.current.play().catch(() => {});
     }
-    try {
-      peerRef.current?.destroy?.();
-    } catch {
-      /* ignore */
+    if (pipVideoRef.current) {
+      pipVideoRef.current.srcObject = stream;
+      void pipVideoRef.current.play().catch(() => {});
     }
-    peerRef.current = null;
-    dataRef.current = null;
-    const st = streamRef.current;
-    if (st) {
-      for (const t of st.getTracks()) t.stop();
-    }
-    streamRef.current = null;
-    hostRtRef.current = null;
-    guestParticlesRef.current = [];
-    setHostView(null);
-    setGuestView(null);
-    guestStateRef.current = null;
-    /** Do not clear `matchRole` here — `setupPeer` calls this while `applyMatch` is wiring a new session. */
-  }, []);
+    return stream;
+  }
 
   async function leaveQueue() {
     const clientId = ensureProfile().userId;
@@ -291,275 +283,402 @@ export default function BlinkStackerDuel({
     }
   }
 
-  async function ensureCamera() {
-    if (streamRef.current) return streamRef.current;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 1280 } },
-    });
-    streamRef.current = stream;
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-      void localVideoRef.current.play();
+  function cleanup() {
+    log("disconnect cleanup");
+    if (matchPollRef.current) {
+      window.clearInterval(matchPollRef.current);
+      matchPollRef.current = null;
     }
-    return stream;
+    void leaveQueue();
+
+    if (peerRef.current) {
+      try {
+        peerRef.current.destroy();
+      } catch {
+        /* ignore */
+      }
+    }
+    peerRef.current = null;
+    dataRef.current = null;
+
+    const s = localStreamRef.current;
+    if (s) {
+      for (const t of s.getTracks()) t.stop();
+    }
+    localStreamRef.current = null;
+
+    hostRtRef.current = null;
+    landmarkerRef.current = null;
+    blinkDetRef.current = null;
+  }
+
+  function sendToHost(msg: GuestToHostDuelMsg) {
+    const conn = dataRef.current;
+    if (conn && conn.open) conn.send(msg);
+  }
+
+  function sendToGuest(msg: HostToGuestDuelMsg) {
+    const conn = dataRef.current;
+    if (conn && conn.open) conn.send(msg);
+  }
+
+  function broadcastAuthoritativeState() {
+    if (roleRef.current !== "host") return;
+    const rt = hostRtRef.current;
+    const conn = dataRef.current;
+    if (!rt || !conn?.open) return;
+    const s = rt.state;
+    if (s.phase === "countdown" && s.cde != null) {
+      s.cd = countdownSecondsLeft(nowMs(), s.cde);
+    }
+    hostSeqRef.current += 1;
+    const sentAt = performance.now();
+    const snap = cloneDuelState(s);
+    duelNetRef.current = snap;
+    sendToGuest({ t: "state", state: snap, seq: hostSeqRef.current, sentAt });
+  }
+
+  function hostTryStartWhenBothReady() {
+    if (roleRef.current !== "host") return;
+    const rt = hostRtRef.current;
+    if (!rt) return;
+    const s = rt.state;
+    if (s.phase !== "lobby") return;
+    if (s.ready.host && s.ready.guest) {
+      log("both players ready — host will move to countdown on next tick");
+    }
+  }
+
+  function hostTryRematchFromGameOver() {
+    if (roleRef.current !== "host") return;
+    const rt = hostRtRef.current;
+    if (!rt) return;
+    const s = rt.state;
+    if (s.phase !== "gameover") return;
+    if (!rematchBothWant(s.rematch)) return;
+    const nextEpoch = (s.matchEpoch ?? 0) + 1;
+    resetHostRuntime(rt, nextEpoch);
+    setUiPhase("lobby");
+    setOpponentLeftMatch(false);
+    lastBrickEpochStoppedRef.current = -1;
+    lastSeenBrickEpochRef.current = -1;
+    log("rematch — lobby reset, epoch", nextEpoch);
+    broadcastAuthoritativeState();
+    bumpUi();
+  }
+
+  function toggleLobbyReady() {
+    if (!opponentConnected || uiPhaseRef.current !== "lobby") return;
+    if (role === "host") {
+      const rt = hostRtRef.current;
+      if (!rt) return;
+      rt.state.ready.host = !rt.state.ready.host;
+      broadcastAuthoritativeState();
+      bumpUi();
+      hostTryStartWhenBothReady();
+    } else if (role === "guest") {
+      const g = duelNetRef.current.ready.guest;
+      sendToHost({ t: "ready", ready: !g });
+    }
+  }
+
+  function requestRematch() {
+    if (role === "host") {
+      const rt = hostRtRef.current;
+      if (!rt || rt.state.phase !== "gameover") return;
+      rt.state.rematch.host = true;
+      broadcastAuthoritativeState();
+      bumpUi();
+      hostTryRematchFromGameOver();
+    } else {
+      sendToHost({ t: "rematch", want: true });
+    }
+  }
+
+  function leaveMatch() {
+    cleanup();
+    router.push(introHref ?? DEFAULT_INTRO);
+  }
+
+  function hostHandleStopFromNetwork(brickEpoch: number) {
+    const rt = hostRtRef.current;
+    if (!rt) return;
+    const s = rt.state;
+    if (s.phase !== "moving" || s.activeBlue) return;
+    if (brickEpoch !== s.brickEpoch) {
+      log("ignored stale stopAttempt", { brickEpoch, cur: s.brickEpoch });
+      return;
+    }
+    if (brickEpoch === lastBrickEpochStoppedRef.current) return;
+    lastBrickEpochStoppedRef.current = brickEpoch;
+    log("host applies guest stopAttempt");
+    hostApplyStop(rt, nowMs());
+    if (rt.state.phase === "gameover") setUiPhase("gameover");
+    broadcastAuthoritativeState();
+    bumpUi();
+  }
+
+  function hostHandleLocalStop() {
+    const rt = hostRtRef.current;
+    if (!rt) return;
+    const s = rt.state;
+    if (s.phase !== "moving" || !s.activeBlue) return;
+    if (s.brickEpoch === lastBrickEpochStoppedRef.current) return;
+    lastBrickEpochStoppedRef.current = s.brickEpoch;
+    log("host local stop (blue turn)");
+    hostApplyStop(rt, nowMs());
+    if (rt.state.phase === "gameover") setUiPhase("gameover");
+    broadcastAuthoritativeState();
+    bumpUi();
+  }
+
+  function trySendGuestStop() {
+    if (roleRef.current !== "guest") return;
+    const s = duelNetRef.current;
+    if (s.phase !== "moving" || s.activeBlue) return;
+    sendToHost({ t: "stopAttempt", brickEpoch: guestBrickEpochRef.current });
+    log("guest sent stopAttempt", guestBrickEpochRef.current);
   }
 
   const tryStopRef = useRef<() => void>(() => {});
 
-  const tryStopLocal = useCallback(() => {
-    const role = roleRef.current;
-    const conn = dataRef.current;
-    if (!conn?.open || localPhase !== "arena") return;
-
-    if (role === "host") {
-      const rt = hostRtRef.current;
-      if (!rt) return;
-      const s = rt.state;
-      if (s.phase !== "moving" || !s.abi) return;
-      const r = hostApplyStop(rt, performance.now(), true);
-      if (r.miss) {
-        const cv = canvasRef.current;
-        if (cv) {
-          const arenaW = cv.width * 0.88;
-          const arenaLeft = (cv.width - arenaW) / 2;
-          hostSpawnMissParticles(rt, cv.height, arenaW, arenaLeft);
-        }
-        setUiShake(true);
-        window.setTimeout(() => setUiShake(false), 320);
-      } else if (r.perfect) {
-        setShowPerfect(true);
-        window.setTimeout(() => setShowPerfect(false), 700);
-      }
-      broadcastIfHost();
-      return;
+  const visionStep = (ts: number) => {
+    const video = localVideoRef.current;
+    const lm = landmarkerRef.current;
+    if (!video || !lm || video.readyState < 2) return;
+    const res = lm.detectForVideo(video, ts);
+    const pts = res.faceLandmarks?.[0] as NormalizedLandmark[] | undefined;
+    const ear = combinedEar(pts);
+    const det = blinkDetRef.current;
+    if (!det) return;
+    const gs = getDrawState();
+    if (gs.phase !== "moving") return;
+    const iAmBlue = roleRef.current === "host";
+    const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
+    if (!myTurn) return;
+    if (det.tick(ear, ts)) {
+      if (roleRef.current === "host") hostHandleLocalStop();
+      else trySendGuestStop();
     }
-
-    if (role === "guest") {
-      const gs = guestStateRef.current;
-      if (!gs || gs.phase !== "moving" || gs.abi) return;
-      sendNet({ t: "bsd_stop_attempt" });
-    }
-  }, [broadcastIfHost, localPhase, sendNet]);
-
-  tryStopRef.current = tryStopLocal;
-
-  useEffect(() => {
-    reduceMotionRef.current =
-      typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  }, []);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
-      if (localPhase !== "arena") return;
+      const gs = getDrawState();
+      if (gs.phase !== "moving") return;
       e.preventDefault();
       tryStopRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [localPhase]);
-
-  const visionStep = useCallback(
-    (now: number) => {
-      const video = localVideoRef.current;
-      const lm = landmarkerRef.current;
-      if (!video || !lm || video.readyState < 2) return;
-      const res = lm.detectForVideo(video, now);
-      const pts = res.faceLandmarks?.[0] as NormalizedLandmark[] | undefined;
-      const ear = combinedEar(pts);
-      const det = blinkDetRef.current;
-      if (!det || localPhase !== "arena") return;
-      if (!allowBlinkRef.current) return;
-      if (det.tick(ear, now)) tryStopRef.current();
-    },
-    [localPhase],
-  );
-
-  const wireHost = useCallback(
-    (conn: { on: (ev: string, fn: (raw: unknown) => void) => void }) => {
-      conn.on("data", (raw: unknown) => {
-        const msg = raw as DuelNetMsg;
-        if (msg.t === "bsd_hello") {
-          setOpponentName(msg.name);
-          lastBroadcastRef.current = 0;
-          broadcastIfHost();
-          return;
-        }
-        if (msg.t === "bsd_ready") {
-          setRemoteReady(msg.ready);
-          const rt = hostRtRef.current;
-          if (rt) rt.readyG = msg.ready;
-          broadcastIfHost();
-          return;
-        }
-        if (msg.t === "bsd_stop_attempt") {
-          const rt = hostRtRef.current;
-          if (!rt) return;
-          const s = rt.state;
-          if (s.phase !== "moving" || s.abi) return;
-          const r = hostApplyStop(rt, performance.now(), false);
-          if (r.miss) {
-            const cv = canvasRef.current;
-            if (cv) {
-              const arenaW = cv.width * 0.88;
-              const arenaLeft = (cv.width - arenaW) / 2;
-              hostSpawnMissParticles(rt, cv.height, arenaW, arenaLeft);
-            }
-            setUiShake(true);
-            window.setTimeout(() => setUiShake(false), 320);
-          } else if (r.perfect) {
-            setShowPerfect(true);
-            window.setTimeout(() => setShowPerfect(false), 700);
-          }
-          broadcastIfHost();
-          return;
-        }
-        if (msg.t === "bsd_rematch") {
-          const rt = hostRtRef.current;
-          if (!rt || rt.state.phase !== "ended") return;
-          resetHostRuntime(rt, rt.matchEpoch + 1);
-          setHostView({ ...rt.state });
-          setLocalReady(false);
-          setRemoteReady(false);
-          setUiShake(false);
-          setShowPerfect(false);
-          blinkDetRef.current?.reset();
-          sendNet({ t: "bsd_rematch_go", epoch: rt.matchEpoch });
-          broadcastIfHost();
-          return;
-        }
-      });
-    },
-    [broadcastIfHost],
-  );
-
-  const wireGuest = useCallback((conn: { on: (ev: string, fn: (raw: unknown) => void) => void }) => {
-    conn.on("data", (raw: unknown) => {
-      const msg = raw as DuelNetMsg;
-      if (msg.t === "bsd_hello") {
-        setOpponentName(msg.name);
-        return;
-      }
-      if (msg.t === "bsd_ready") {
-        setRemoteReady(msg.ready);
-        return;
-      }
-      if (msg.t === "bsd_state") {
-        const prev = guestStateRef.current?.phase;
-        guestStateRef.current = msg.s;
-        setGuestView({ ...msg.s });
-        if (msg.s.phase === "ended" && msg.s.loser && prev !== "ended") {
-          const cv = canvasRef.current;
-          if (cv) {
-            const arenaW = cv.width * 0.88;
-            const arenaLeft = (cv.width - arenaW) / 2;
-            const rt = { state: msg.s, particles: guestParticlesRef.current } as HostRuntime;
-            hostSpawnMissParticles(rt, cv.height, arenaW, arenaLeft);
-          }
-        }
-        return;
-      }
-      if (msg.t === "bsd_rematch_go") {
-        guestParticlesRef.current = [];
-        setLocalReady(false);
-        setRemoteReady(false);
-        blinkDetRef.current?.reset();
-      }
-    });
   }, []);
 
-  async function setupPeer(roomId: string, r: Role) {
-    cleanupPeer();
-    await ensureCamera();
-    const stream = streamRef.current!;
+  tryStopRef.current = () => {
+    const gs = getDrawState();
+    if (gs.phase !== "moving") return;
+    const iAmBlue = roleRef.current === "host";
+    const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
+    if (!myTurn) return;
+    if (roleRef.current === "host") hostHandleLocalStop();
+    else trySendGuestStop();
+  };
 
-    if (r === "host") {
-      const { peer } = await createHostRoom({ desiredRoomId: roomId });
-      peerRef.current = peer;
-      peer.on("call", (call: import("peerjs").MediaConnection) => {
-        call.answer(stream);
-        call.on("stream", (remoteStream: MediaStream) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-            void remoteVideoRef.current.play();
-          }
-        });
-      });
-      const conn = await waitForHostConnection(peer as never);
-      dataRef.current = conn as never;
-      wireHost(conn as never);
-      const sendHello = () => sendNet({ t: "bsd_hello", name: nameRef.current || "Player" });
-      if (conn.open) sendHello();
-      else conn.on("open", sendHello);
-    } else {
-      const peer = await createGuestPeer();
-      peerRef.current = peer;
-      guestAnswerCalls(peer as never, stream, (incoming: import("peerjs").MediaConnection) => {
-        incoming.on("stream", (remoteStream: MediaStream) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-            void remoteVideoRef.current.play();
-          }
-        });
-      });
-      const conn = await connectGuestWithRetry(peer as never, roomId);
-      dataRef.current = conn as never;
-      wireGuest(conn as never);
-      const sendHello = () => sendNet({ t: "bsd_hello", name: nameRef.current || "Player" });
-      if (conn.open) sendHello();
-      else conn.on("open", sendHello);
-      const call = (peer as { call: (id: string, s: MediaStream) => { on: (ev: string, fn: (x: MediaStream) => void) => void } }).call(
-        roomId,
-        stream,
-      );
+  async function connectAsHost(desiredRoomId: string) {
+    cleanup();
+    log("host selected — creating room", desiredRoomId);
+    setStatus("Creating room…");
+    setRole("host");
+    setOpponentConnected(false);
+
+    const stream = await ensureLocalCamera();
+
+    let rid: string;
+    let peer: any;
+    try {
+      const created = await createHostRoom({ desiredRoomId });
+      rid = created.roomId;
+      peer = created.peer;
+    } catch {
+      throw new Error("Room unavailable");
+    }
+
+    peerRef.current = peer;
+    setRoomId(rid);
+    hostRtRef.current = createHostRuntime();
+    log("room joined (host)", rid);
+
+    setStatus("Waiting for opponent…");
+
+    peer.on("call", (call: any) => {
+      call.answer(stream);
       call.on("stream", (remoteStream: MediaStream) => {
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
           void remoteVideoRef.current.play();
         }
+        log("opponent camera stream (host)");
       });
-    }
-  }
-
-  async function applyMatch(roomId: string, r: Role) {
-    roleRef.current = r;
-    setMatchRole(r);
-    setLocalPhase("peer_setup");
-    setStatus("Connecting…");
-    await setupPeer(roomId, r);
-    try {
-      landmarkerRef.current = await createFaceLandmarker();
-    } catch {
-      landmarkerRef.current = null;
-    }
-    blinkDetRef.current = createBlinkEdgeDetector({
-      threshold: 0.19,
-      cooldownMs: BLINK_COOLDOWN_MS,
     });
-    blinkDetRef.current.reset();
 
-    if (r === "host") {
-      hostRtRef.current = createHostRuntime(1);
-      hostRtRef.current.readyH = false;
-      hostRtRef.current.readyG = false;
-      setHostView({ ...hostRtRef.current.state });
-      broadcastIfHost();
-    } else {
-      guestStateRef.current = null;
-      setGuestView(null);
-    }
+    const conn = await waitForHostConnection(peer);
+    dataRef.current = conn;
+    setOpponentConnected(true);
+    setStatus("Opponent connected");
+    log("opponent connected (data channel)", conn.open);
 
-    setLocalPhase("arena");
-    setStatus("");
-    setLocalReady(false);
-    setRemoteReady(false);
+    conn.on("data", (raw: unknown) => {
+      const msg = raw as GuestToHostDuelMsg;
+      const rt = hostRtRef.current;
+      if (!rt) return;
+      if (msg.t === "ready") {
+        rt.state.ready.guest = msg.ready;
+        broadcastAuthoritativeState();
+        bumpUi();
+        hostTryStartWhenBothReady();
+      } else if (msg.t === "rematch") {
+        if (rt.state.phase === "gameover") {
+          rt.state.rematch.guest = msg.want;
+          broadcastAuthoritativeState();
+          bumpUi();
+          hostTryRematchFromGameOver();
+        }
+      } else if (msg.t === "stopAttempt") {
+        hostHandleStopFromNetwork(msg.brickEpoch);
+      }
+    });
+
+    conn.on("close", () => {
+      log("peer data channel closed (host)");
+      setOpponentConnected(false);
+      setOpponentLeftMatch(true);
+    });
+
+    const onDataOpen = () => {
+      log("data channel open — initial state broadcast (host)");
+      lastBrickEpochStoppedRef.current = -1;
+      lastSeenBrickEpochRef.current = -1;
+      broadcastAuthoritativeState();
+    };
+    if (conn.open) onDataOpen();
+    else conn.on("open", onDataOpen);
   }
+
+  async function connectAsGuest(rid: string) {
+    cleanup();
+    lastGuestSeqRef.current = -1;
+    log("joining room as guest", rid);
+    setStatus("Joining…");
+    setRole("guest");
+    setOpponentConnected(false);
+    setRoomId(rid);
+
+    const stream = await ensureLocalCamera();
+
+    const peer = await createGuestPeer();
+    peerRef.current = peer;
+
+    guestAnswerCalls(peer as never, stream, (incoming) => {
+      incoming.on("stream", (remoteStream: MediaStream) => {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          void remoteVideoRef.current.play();
+        }
+        log("opponent camera stream (guest, incoming call)");
+      });
+    });
+
+    const conn = await connectGuestWithRetry(peer as never, rid);
+    dataRef.current = conn;
+    setOpponentConnected(true);
+    setStatus("Opponent connected");
+    log("guest data channel open", conn.open);
+
+    conn.on("data", (raw: unknown) => {
+      const msg = raw as HostToGuestDuelMsg;
+      if (msg.t !== "state") return;
+      if (msg.seq <= lastGuestSeqRef.current) return;
+      lastGuestSeqRef.current = msg.seq;
+      const authoritative = cloneDuelState(msg.state);
+      duelNetRef.current = authoritative;
+      guestBrickEpochRef.current = authoritative.brickEpoch;
+      log("state sync received", { seq: msg.seq, phase: authoritative.phase });
+      maybeBumpGuestUi(authoritative.phase === "lobby" || authoritative.phase === "gameover");
+
+      const ph = authoritative.phase;
+      if (ph === "lobby") {
+        setUiPhase("lobby");
+        setOpponentLeftMatch(false);
+      } else if (ph === "gameover") {
+        setUiPhase("gameover");
+      } else {
+        setUiPhase("playing");
+      }
+    });
+
+    conn.on("close", () => {
+      log("peer data channel closed (guest)");
+      setOpponentConnected(false);
+      setOpponentLeftMatch(true);
+    });
+
+    const call = peer.call(rid, stream);
+    call.on("stream", (remoteStream: MediaStream) => {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        void remoteVideoRef.current.play();
+      }
+    });
+  }
+
+  async function applyMatch(peerRoomId: string, r: Role) {
+    if (matchPollRef.current) {
+      window.clearInterval(matchPollRef.current);
+      matchPollRef.current = null;
+    }
+    setStatus("Connecting…");
+    log("player assigned", r, "peerRoomId", peerRoomId);
+    try {
+      if (r === "host") await connectAsHost(peerRoomId);
+      else await connectAsGuest(peerRoomId);
+
+      try {
+        landmarkerRef.current = await createFaceLandmarker();
+      } catch {
+        landmarkerRef.current = null;
+      }
+      blinkDetRef.current = createBlinkEdgeDetector({
+        threshold: 0.19,
+        cooldownMs: DUEL_BLINK_COOLDOWN_MS,
+      });
+      blinkDetRef.current.reset();
+
+      setOpponentLeftMatch(false);
+      setUiPhase("lobby");
+      log("game start — lobby (landmarker:", !!landmarkerRef.current, ")");
+    } catch {
+      cleanup();
+      setStatus("Connection failed. Try again.");
+      setUiPhase("menu");
+      setRole(null);
+    }
+  }
+
+  useConsumePendingMatch("blinkstackerduel", (p) => {
+    log("pending random match for blinkstackerduel");
+    void applyMatch(p.peerRoomId, p.role);
+  });
 
   async function findMatch() {
+    if (matchPollRef.current) {
+      window.clearInterval(matchPollRef.current);
+      matchPollRef.current = null;
+    }
+    log("entering queue");
+    setStatus("Searching for opponent…");
+    setUiPhase("matchmaking");
+
     const clientId = ensureProfile().userId;
-    setLocalPhase("queue");
-    setStatus("Finding opponent…");
     const res = await fetch("/api/blink-stacker-duel/queue", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -567,15 +686,20 @@ export default function BlinkStackerDuel({
     });
     const data = await res.json();
     if (data.matched) {
+      log("matched immediately");
       await applyMatch(data.peerRoomId as string, data.role as Role);
       return;
     }
+
     matchPollRef.current = window.setInterval(async () => {
       const r = await fetch(`/api/blink-stacker-duel/queue?clientId=${encodeURIComponent(clientId)}`);
       const j = await r.json();
       if (j.matched) {
-        if (matchPollRef.current) clearInterval(matchPollRef.current);
-        matchPollRef.current = null;
+        if (matchPollRef.current) {
+          window.clearInterval(matchPollRef.current);
+          matchPollRef.current = null;
+        }
+        log("matched from poll");
         await applyMatch(j.peerRoomId as string, j.role as Role);
       }
     }, QUEUE_POLL_MS);
@@ -584,17 +708,8 @@ export default function BlinkStackerDuel({
   useEffect(() => {
     if (!autoJoinPublicQueue) return;
     void findMatch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot queue join from GameIntro
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoJoinPublicQueue]);
-
-  useEffect(() => {
-    const v = pipVideoRef.current;
-    const s = streamRef.current;
-    if (v && s) {
-      v.srcObject = s;
-      void v.play().catch(() => {});
-    }
-  }, [localPhase, matchRole]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -610,240 +725,268 @@ export default function BlinkStackerDuel({
     return () => ro.disconnect();
   }, []);
 
-  const lastSimTsRef = useRef<number | null>(null);
-
   useEffect(() => {
     let raf = 0;
     const loop = (ts: number) => {
       raf = requestAnimationFrame(loop);
+      const last = lastLoopRef.current ?? ts;
+      const dt = Math.min(0.05, (ts - last) / 1000);
+      lastLoopRef.current = ts;
+
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       const w = canvas.width;
       const h = canvas.height;
-      const last = lastSimTsRef.current ?? ts;
-      const dt = Math.min(0.05, (ts - last) / 1000);
-      lastSimTsRef.current = ts;
 
-      const role = roleRef.current;
-      const sSync =
-        role === "host" ? hostRtRef.current?.state : guestStateRef.current;
-      if (sSync && role) {
-        allowBlinkRef.current =
-          localPhaseRef.current === "arena" &&
-          sSync.phase === "moving" &&
-          ((sSync.abi && role === "host") || (!sSync.abi && role === "guest"));
-      } else {
-        allowBlinkRef.current = false;
-      }
+      const isHost = roleRef.current === "host";
+      const rt = hostRtRef.current;
 
-      visionStep(ts);
-
-      if (role === "host" && hostRtRef.current && localPhaseRef.current === "arena") {
-        const rt = hostRtRef.current;
-        const now = performance.now();
-        hostTickTimeTransitions(rt, now);
+      if (isHost && rt && opponentConnected) {
         const s = rt.state;
+        if (s.brickEpoch !== lastSeenBrickEpochRef.current) {
+          lastSeenBrickEpochRef.current = s.brickEpoch;
+          lastBrickEpochStoppedRef.current = -1;
+        }
+
+        const now = nowMs();
+        hostTickTimeTransitions(rt, now);
+        if (
+          (s.phase === "countdown" ||
+            s.phase === "turn_banner" ||
+            s.phase === "moving" ||
+            s.phase === "gameover") &&
+          uiPhaseRef.current === "lobby"
+        ) {
+          setUiPhase("playing");
+        }
+        if (s.phase === "countdown" && s.cde != null) {
+          s.cd = countdownSecondsLeft(now, s.cde);
+        }
         if (s.phase === "moving") {
           const arenaW = w * 0.88;
           hostAdvanceMoving(s, dt, arenaW);
         }
-        if (s.phase === "moving" || s.phase === "turn_banner" || s.phase === "ended") {
+        if (s.phase === "moving" || s.phase === "turn_banner" || s.phase === "gameover" || s.phase === "countdown") {
           hostUpdateCamera(s, dt, h, reduceMotionRef.current);
         }
-        for (const p of rt.particles) {
-          if (p.life <= 0) continue;
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
-          p.vy += 520 * dt;
-          p.life -= dt * 1.35;
+        if (s.phase === "gameover" && uiPhaseRef.current !== "gameover") {
+          setUiPhase("gameover");
         }
-        drawScene(ctx, w, h, s, rt.particles, uiShake && s.phase === "ended");
-        broadcastIfHost();
-      } else if (role === "guest") {
-        const gs = guestStateRef.current;
-        if (gs) {
-          for (const p of guestParticlesRef.current) {
-            if (p.life <= 0) continue;
-            p.x += p.vx * dt;
-            p.y += p.vy * dt;
-            p.vy += 520 * dt;
-            p.life -= dt * 1.35;
+        if (s.phase === "moving" || s.phase === "turn_banner" || s.phase === "gameover" || s.phase === "countdown") {
+          if (now - lastPlayBroadcastMsRef.current >= 66) {
+            lastPlayBroadcastMsRef.current = now;
+            broadcastAuthoritativeState();
           }
-          drawScene(ctx, w, h, gs, guestParticlesRef.current, uiShake && gs.phase === "ended");
+        } else if (s.phase === "lobby") {
+          if (now - lastPlayBroadcastMsRef.current >= 200) {
+            lastPlayBroadcastMsRef.current = now;
+            broadcastAuthoritativeState();
+          }
+        }
+        if (uiPhaseRef.current === "playing" && now - lastHostUiBumpRef.current > 120) {
+          lastHostUiBumpRef.current = now;
+          bumpUi();
         }
       }
+
+      visionStep(ts);
+
+      const ds = getDrawState();
+      drawScene(ctx, w, h, ds);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [broadcastIfHost, uiShake, visionStep]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, opponentConnected]);
 
-  function toggleReady() {
-    const next = !localReady;
-    setLocalReady(next);
-    sendNet({ t: "bsd_ready", ready: next });
-    if (roleRef.current === "host" && hostRtRef.current) {
-      hostRtRef.current.readyH = next;
-      broadcastIfHost();
+  useEffect(() => {
+    const v = pipVideoRef.current;
+    const s = localStreamRef.current;
+    if (v && s) {
+      v.srcObject = s;
+      void v.play().catch(() => {});
     }
-  }
+  }, [uiPhase, role]);
 
-  function rematch() {
-    if (roleRef.current === "host" && hostRtRef.current) {
-      const rt = hostRtRef.current;
-      resetHostRuntime(rt, rt.matchEpoch + 1);
-      setHostView({ ...rt.state });
-      setLocalReady(false);
-      setRemoteReady(false);
-      setUiShake(false);
-      setShowPerfect(false);
-      blinkDetRef.current?.reset();
-      sendNet({ t: "bsd_rematch_go", epoch: rt.matchEpoch });
-      broadcastIfHost();
-    } else {
-      sendNet({ t: "bsd_rematch", want: true });
+  const showMenu = uiPhase === "menu";
+  const showMatchmaking = uiPhase === "matchmaking";
+  const showLobby = uiPhase === "lobby";
+  const showGameOver = uiPhase === "gameover";
+  const showArena = uiPhase === "playing" || uiPhase === "gameover";
+
+  const net = getDrawState();
+  const iAmBlue = role === "host";
+  const turnPill =
+    net.phase === "moving"
+      ? net.activeBlue
+        ? iAmBlue
+          ? "YOUR TURN — BLINK TO STOP"
+          : "OPPONENT'S TURN"
+        : !iAmBlue
+          ? "YOUR TURN — BLINK TO STOP"
+          : "OPPONENT'S TURN"
+      : "";
+
+  const youWin =
+    net.phase === "gameover" &&
+    net.loser &&
+    ((net.loser === "red" && iAmBlue) || (net.loser === "blue" && !iAmBlue));
+
+  function cancelMatchmaking() {
+    if (matchPollRef.current) {
+      window.clearInterval(matchPollRef.current);
+      matchPollRef.current = null;
     }
-  }
-
-  function leaveMatch() {
     void leaveQueue();
-    cleanupPeer();
-    roleRef.current = null;
-    setMatchRole(null);
     router.push(introHref ?? DEFAULT_INTRO);
   }
 
-  const displayState = matchRole === "guest" ? guestView : hostView;
-  const localIsBlue = matchRole === "host";
-  const activeIsBlue = displayState?.abi;
-  const isMyTurn =
-    displayState?.phase === "moving" &&
-    ((activeIsBlue && localIsBlue) || (!activeIsBlue && !localIsBlue));
+  const readyHost = role === "host" ? hostRtRef.current?.state.ready.host ?? false : duelNetRef.current.ready.host;
+  const readyGuest = role === "host" ? hostRtRef.current?.state.ready.guest ?? false : duelNetRef.current.ready.guest;
 
   return (
     <div className={styles.shell}>
-      <video className={styles.hidden} playsInline muted autoPlay ref={localVideoRef} />
+      <video ref={localVideoRef} className={styles.hidden} playsInline muted autoPlay />
 
-      <header className={styles.topBar}>
-        <span className={styles.brand}>BLINK STACKER DUEL</span>
-        {localPhase === "arena" && displayState?.phase === "moving" ? (
-          <div className={`${styles.turnPill} ${isMyTurn ? "" : styles.opponent}`}>
-            {isMyTurn ? "YOUR TURN — BLINK TO STOP" : "OPPONENT'S TURN"}
-          </div>
-        ) : (
-          <span />
-        )}
-      </header>
+      <GameplayDuelHud
+        gameBadge="Blink Stacker Duel"
+        opponent={{
+          displayName: showMatchmaking ? "Finding match" : opponentConnected ? "Opponent" : "Arena",
+          username: showMatchmaking ? "" : opponentConnected ? "rival" : "",
+          online: opponentConnected || showMatchmaking,
+        }}
+        you={{
+          displayName: profile.displayName.trim() || "Guest",
+          username: hudPlainUsername(profile.username),
+          online: true,
+        }}
+      />
 
-      <main className={styles.main}>
-        {localPhase === "intro" ? (
-          <div className={styles.lobbyPanel}>
-            <p className={styles.lobbyTitle}>1v1 tower duel</p>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: "rgba(226,232,240,0.88)" }}>
-              Shared tower — blue vs red. Only the active player can stop the brick. First miss loses.
-            </p>
-            <button type="button" className={styles.btn} onClick={() => void findMatch()}>
-              Find match
-            </button>
-            <button type="button" className={styles.btnGhost} onClick={() => router.push("/")}>
-              GO HOME
-            </button>
-          </div>
-        ) : null}
+      <main className={gp.surfaceRoot}>
+        <div className={gp.surfaceVignette} aria-hidden />
+        <div className={gp.surfaceMain} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+          <header className={styles.topBar}>
+            <span className={styles.brand}>BLINK STACKER DUEL</span>
+            {showArena && net.phase === "moving" ? (
+              <div className={`${styles.turnPill} ${turnPill.includes("OPPONENT") ? styles.turnPillOpponent : ""}`}>
+                {turnPill}
+              </div>
+            ) : (
+              <span />
+            )}
+          </header>
 
-        {localPhase === "queue" || localPhase === "peer_setup" ? (
-          <div className={styles.lobbyPanel}>
-            <p className={styles.lobbyTitle}>{localPhase === "queue" ? "Matching…" : "Connecting…"}</p>
-            <p style={{ margin: 0, fontSize: 13, color: "rgba(200,210,230,0.85)" }}>{status}</p>
-          </div>
-        ) : null}
+          <div className={styles.main}>
+            {showArena ? (
+              <div ref={stageRef} className={styles.stage}>
+                <div className={styles.remoteShell}>
+                  <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
+                </div>
+                <canvas ref={canvasRef} className={styles.overlayCanvas} />
+                <div className={styles.pip}>
+                  <video ref={pipVideoRef} className={styles.pipInner} playsInline muted autoPlay />
+                </div>
 
-        {localPhase === "arena" ? (
-          <div ref={stageRef} className={`${styles.stage} ${uiShake ? styles.shake : ""}`}>
-            <div className={styles.remoteShell}>
-              <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
-            </div>
-            <canvas
-              ref={canvasRef}
-              className={styles.overlayCanvas}
-              onClick={() => {
-                if (isMyTurn) tryStopRef.current();
-              }}
-            />
-            <div className={styles.pip}>
-              <video ref={pipVideoRef} playsInline muted autoPlay className={styles.pipInner} />
-            </div>
+                {net.phase === "countdown" ? (
+                  <div className={styles.layerUi}>
+                    <div className={styles.count}>{net.cd ?? 3}</div>
+                  </div>
+                ) : null}
 
-            {matchRole === "guest" && guestView == null ? (
-              <div className={styles.layerUi}>
-                <div className={styles.lobbyPanel}>
-                  <p className={styles.lobbyTitle}>Connecting</p>
-                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: "rgba(200,210,230,0.9)" }}>
-                    Syncing with host… If this lasts more than a few seconds, try leaving and finding a new match.
-                  </p>
+                {net.phase === "turn_banner" && net.banner ? (
+                  <div className={styles.layerUi}>
+                    <div className={styles.banner}>{net.banner}</div>
+                  </div>
+                ) : null}
+
+                {showGameOver && net.loser ? (
+                  <div className={styles.layerUi}>
+                    <div className={styles.card}>
+                      <p className={styles.endTitle}>{youWin ? "YOU WIN" : "YOU LOSE"}</p>
+                      <RematchBar
+                        iWantRematch={iAmBlue ? net.rematch.host : net.rematch.guest}
+                        theyWantRematch={iAmBlue ? net.rematch.guest : net.rematch.host}
+                        onRematch={requestRematch}
+                        onLeave={leaveMatch}
+                        opponentLeft={opponentLeftMatch}
+                        onReturnArcade={leaveMatch}
+                        onGoHome={() => router.push("/")}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {showMenu || showMatchmaking ? (
+              <div className={styles.layerUi} style={{ position: "relative", inset: "auto", flex: 1, width: "100%" }}>
+                <div className={styles.card}>
+                  <div className={styles.title}>Blink Stacker Duel</div>
+                  {showMatchmaking ? (
+                    <>
+                      <p className={styles.sub}>Searching for an opponent…</p>
+                      <div className={styles.row}>
+                        <button type="button" className={styles.buttonSecondary} onClick={cancelMatchmaking}>
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className={styles.sub}>Shared tower — blue vs red. Only the active player can blink to stop the brick.</p>
+                      <div className={styles.row}>
+                        <button type="button" className={styles.button} onClick={() => void findMatch()}>
+                          Find Match
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  <p className={styles.status}>{status}</p>
+                  {roomId ? <p className={styles.status}>Room: {roomId}</p> : null}
                 </div>
               </div>
             ) : null}
 
-            {displayState?.phase === "lobby" ? (
-              <div className={styles.layerUi}>
-                <div className={styles.lobbyPanel}>
-                  <p className={styles.lobbyTitle}>Lobby</p>
-                  <p style={{ margin: "0 0 8px", fontSize: 13 }}>Playing as {nameRef.current}</p>
-                  <p style={{ margin: "0 0 8px", fontSize: 12, color: "rgba(180,190,210,0.85)" }}>
-                    Opponent: {opponentName ?? "…"}
+            {showLobby ? (
+              <div className={styles.layerUi} style={{ position: "relative", inset: "auto", flex: 1, width: "100%" }}>
+                <div className={styles.card}>
+                  <div className={styles.title}>Lobby</div>
+                  <p className={styles.sub}>Ready up — match starts when both players are ready.</p>
+                  <p className={styles.subMuted}>
+                    {opponentConnected
+                      ? role === "host"
+                        ? readyGuest
+                          ? "Opponent is ready."
+                          : "Waiting for opponent…"
+                        : readyHost
+                          ? "Opponent is ready."
+                          : "Waiting for opponent…"
+                      : "Waiting for opponent…"}
                   </p>
-                  <p style={{ margin: "0 0 8px", fontSize: 12 }}>
-                    You: {localIsBlue ? "BLUE" : "RED"} · Them: {localIsBlue ? "RED" : "BLUE"}
-                  </p>
-                  <button type="button" className={styles.btn} onClick={toggleReady}>
-                    {localReady ? "Ready ✓" : "Ready"}
-                  </button>
-                  <p style={{ margin: "8px 0 0", fontSize: 11, color: "rgba(160,170,190,0.8)" }}>
-                    Them: {remoteReady ? "Ready ✓" : "Waiting"}
-                  </p>
+                  <div className={styles.row}>
+                    {opponentConnected ? (
+                      <button
+                        type="button"
+                        className={(role === "host" ? readyHost : readyGuest) ? styles.buttonReady : styles.button}
+                        onClick={toggleLobbyReady}
+                      >
+                        {(role === "host" ? readyHost : readyGuest) ? "READY ✓" : "READY"}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className={styles.row}>
+                    <button type="button" className={styles.buttonSecondary} onClick={leaveMatch}>
+                      Back
+                    </button>
+                  </div>
+                  <p className={styles.status}>{status}</p>
                 </div>
               </div>
             ) : null}
-
-            {displayState?.phase === "countdown" ? (
-              <div className={styles.layerUi}>
-                <div className={styles.count}>{displayState.cd ?? 3}</div>
-              </div>
-            ) : null}
-
-            {displayState?.phase === "turn_banner" && displayState.banner ? (
-              <div className={styles.layerUi}>
-                <div className={styles.banner}>{displayState.banner}</div>
-              </div>
-            ) : null}
-
-            {displayState?.phase === "ended" && displayState.loser ? (
-              <div className={styles.layerUi}>
-                <div className={styles.lobbyPanel}>
-                  <p className={styles.endTitle}>
-                    {displayState.loser === "blue"
-                      ? localIsBlue
-                        ? "YOU LOSE"
-                        : "YOU WIN"
-                      : localIsBlue
-                        ? "YOU WIN"
-                        : "YOU LOSE"}
-                  </p>
-                  <button type="button" className={styles.btn} onClick={rematch}>
-                    Rematch
-                  </button>
-                  <button type="button" className={styles.btnGhost} onClick={leaveMatch}>
-                    GO HOME
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {showPerfect ? <div className={styles.perfect}>PERFECT</div> : null}
           </div>
-        ) : null}
+        </div>
       </main>
 
       <GFBottomNav activeHref="/" />

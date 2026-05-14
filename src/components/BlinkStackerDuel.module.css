@@ -1,4 +1,4 @@
-/* Blink Stacker Duel — 9:16 arena, opponent feed + overlay, GameFace neon */
+/* Blink Stacker Duel — 9:16 arena, opponent full-bleed + tower overlay + pip self */
 
 .shell {
   position: relative;
@@ -29,20 +29,23 @@
 }
 
 .turnPill {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 850;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid rgba(56, 189, 248, 0.45);
-  background: rgba(6, 10, 18, 0.75);
-  box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+  background: rgba(6, 10, 18, 0.82);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.12);
+  max-width: min(200px, 52vw);
+  text-align: center;
+  line-height: 1.25;
 }
 
-.turnPill.opponent {
+.turnPillOpponent {
   border-color: rgba(251, 113, 133, 0.45);
-  box-shadow: 0 0 20px rgba(251, 113, 133, 0.12);
+  box-shadow: 0 0 18px rgba(251, 113, 133, 0.1);
 }
 
 .main {
@@ -96,8 +99,7 @@
   width: 100%;
   height: 100%;
   display: block;
-  pointer-events: auto;
-  touch-action: manipulation;
+  pointer-events: none;
 }
 
 .pip {
@@ -112,7 +114,6 @@
   border: 1px solid rgba(255, 255, 255, 0.25);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   z-index: 5;
-  transform: scaleX(-1);
 }
 
 .pipInner {
@@ -147,14 +148,81 @@
   pointer-events: auto;
 }
 
-.banner {
-  font-family: var(--gf-font-display), Impact, system-ui, sans-serif;
-  font-size: clamp(22px, 6vw, 34px);
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  text-shadow:
-    0 0 18px rgba(56, 189, 248, 0.65),
-    0 0 36px rgba(251, 81, 81, 0.35);
+.card {
+  pointer-events: auto;
+  background: rgba(4, 6, 12, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 18px 16px;
+  max-width: 300px;
+  backdrop-filter: blur(12px);
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.sub {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.subMuted {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: rgba(160, 170, 190, 0.88);
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.button {
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 0;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: linear-gradient(180deg, #e0f2fe, var(--gf-you, #38bdf8));
+  color: #041018;
+}
+
+.buttonSecondary {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.buttonReady {
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 0;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: linear-gradient(180deg, #bbf7d0, #22c55e);
+  color: #041018;
+  box-shadow: 0 0 20px rgba(52, 211, 153, 0.35);
+}
+
+.status {
+  margin-top: 10px;
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.95);
 }
 
 .count {
@@ -165,105 +233,14 @@
   line-height: 1;
 }
 
-.perfect {
-  position: absolute;
-  top: 22%;
-  left: 0;
-  right: 0;
-  text-align: center;
+.banner {
+  font-family: var(--gf-font-display), Impact, system-ui, sans-serif;
+  font-size: clamp(22px, 6vw, 34px);
   font-weight: 900;
-  font-size: clamp(24px, 7vw, 38px);
-  letter-spacing: 0.2em;
-  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: 0.14em;
   text-shadow:
-    0 0 22px rgba(56, 189, 248, 0.9),
-    0 0 40px rgba(251, 81, 81, 0.4);
-  animation: duelPerfect 0.75s ease-out forwards;
-  pointer-events: none;
-}
-
-@keyframes duelPerfect {
-  0% {
-    opacity: 0;
-    transform: scale(0.75);
-  }
-  30% {
-    opacity: 1;
-    transform: scale(1.05);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1);
-  }
-}
-
-.shake {
-  animation: duelShake 0.28s ease-out;
-}
-
-@keyframes duelShake {
-  0% {
-    transform: translate(0, 0);
-  }
-  25% {
-    transform: translate(-5px, 3px);
-  }
-  50% {
-    transform: translate(5px, -3px);
-  }
-  75% {
-    transform: translate(-4px, -2px);
-  }
-  100% {
-    transform: translate(0, 0);
-  }
-}
-
-.lobbyPanel {
-  pointer-events: auto;
-  background: rgba(4, 6, 12, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
-  padding: 18px 16px;
-  max-width: 300px;
-  backdrop-filter: blur(12px);
-}
-
-.lobbyTitle {
-  margin: 0 0 10px;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.btn {
-  margin-top: 10px;
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 999px;
-  border: 0;
-  font-weight: 850;
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  cursor: pointer;
-  background: linear-gradient(180deg, #e0f2fe, var(--gf-you, #38bdf8));
-  color: #041018;
-}
-
-.btnGhost {
-  margin-top: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: transparent;
-  color: rgba(226, 232, 240, 0.95);
-  font-weight: 780;
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  cursor: pointer;
+    0 0 18px rgba(56, 189, 248, 0.65),
+    0 0 36px rgba(251, 81, 81, 0.35);
 }
 
 .endTitle {
@@ -279,11 +256,4 @@
   height: 1px;
   opacity: 0;
   pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .shake,
-  .perfect {
-    animation: none !important;
-  }
 }

@@ -9,23 +9,24 @@ type MatchInfo = {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __bsdQueue: WaitingEntry[] | undefined;
+  var __blinkDuelQueue: WaitingEntry[] | undefined;
   // eslint-disable-next-line no-var
-  var __bsdResults: Map<string, MatchInfo> | undefined;
+  var __blinkDuelResults: Map<string, MatchInfo> | undefined;
 }
 
 export const dynamic = "force-dynamic";
 
 function getQueue(): WaitingEntry[] {
-  if (!globalThis.__bsdQueue) globalThis.__bsdQueue = [];
-  return globalThis.__bsdQueue;
+  if (!globalThis.__blinkDuelQueue) globalThis.__blinkDuelQueue = [];
+  return globalThis.__blinkDuelQueue;
 }
 
 function getResults(): Map<string, MatchInfo> {
-  if (!globalThis.__bsdResults) globalThis.__bsdResults = new Map();
-  return globalThis.__bsdResults;
+  if (!globalThis.__blinkDuelResults) globalThis.__blinkDuelResults = new Map();
+  return globalThis.__blinkDuelResults;
 }
 
+/** Same pairing logic as `/api/facepong/queue` — separate global queue for this game. */
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as { clientId?: string; action?: "join" | "leave" };
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
       const a = queue.shift()!;
       const b = queue.shift()!;
       const roomSuffix = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-      const peerRoomId = `bsd-${roomSuffix}`;
+      const peerRoomId = `blinkduel-${roomSuffix}`;
       results.set(a.clientId, { peerRoomId, role: "host" });
       results.set(b.clientId, { peerRoomId, role: "guest" });
     }

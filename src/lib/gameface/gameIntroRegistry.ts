@@ -51,7 +51,7 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
     slug: "blink-stacker-duel",
     title: "BLINK STACKER DUEL",
     description:
-      "One shared tower — take turns as blue and red. Blink to stop your brick; first miss loses the duel.",
+      "One shared tower — blue then red. Blink to stop your brick when it is your turn; under 50% overlap loses the duel.",
     accent: "blinkstackerduel",
     playPath: "/blink-stacker-duel/play",
   },
