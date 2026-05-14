@@ -1,7 +1,7 @@
 /** Routes under `/` that show the universal GameIntro (not the live arena). */
-export type GameIntroSlug = "charades" | "staring-contest" | "facepong" | "facecard";
+export type GameIntroSlug = "charades" | "staring-contest" | "facepong" | "facecard" | "blink-stacker-duel";
 
-export type GameIntroAccent = "charades" | "staring" | "facepong" | "facecard";
+export type GameIntroAccent = "charades" | "staring" | "facepong" | "facecard" | "blinkstackerduel";
 
 export type GameIntroConfig = {
   slug: GameIntroSlug;
@@ -46,5 +46,13 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
       "Each player wears a secret name on their forehead. Ask questions and guess who you are before your guesses run out.",
     accent: "facecard",
     playPath: "/facecard/play",
+  },
+  "blink-stacker-duel": {
+    slug: "blink-stacker-duel",
+    title: "BLINK STACKER DUEL",
+    description:
+      "One shared tower — take turns as blue and red. Blink to stop your brick; first miss loses the duel.",
+    accent: "blinkstackerduel",
+    playPath: "/blink-stacker-duel/play",
   },
 };

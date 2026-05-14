@@ -334,6 +334,40 @@
     0 0 48px rgba(251, 81, 81, 0.12);
 }
 
+.accentBlinkstackerduel {
+  border-color: rgba(251, 99, 99, 0.42);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 0 30px rgba(251, 99, 99, 0.16),
+    0 0 32px rgba(56, 189, 248, 0.12);
+}
+
+.accentBlinkstackerduel .iconWrap {
+  border-color: rgba(251, 99, 99, 0.48);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 22px rgba(251, 99, 99, 0.28),
+    0 0 18px rgba(56, 189, 248, 0.2);
+}
+
+.accentBlinkstackerduel .playPill {
+  border-color: rgba(56, 189, 248, 0.48);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 16px rgba(56, 189, 248, 0.22);
+}
+
+.accentBlinkstackerduel.rowCard:hover:not(.rowDisabled) {
+  border-color: rgba(252, 165, 165, 0.65);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 10px 28px rgba(0, 0, 0, 0.55),
+    0 0 42px rgba(251, 99, 99, 0.22),
+    0 0 40px rgba(56, 189, 248, 0.18);
+}
+
 .accentFriends {
   border-color: rgba(52, 211, 153, 0.45);
   box-shadow:

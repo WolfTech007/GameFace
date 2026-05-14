@@ -9,6 +9,7 @@ export type GFGameCardAccent =
   | "facepong"
   | "facecard"
   | "blinkstacker"
+  | "blinkstackerduel"
   | "friends"
   | "tiptionary";
 
@@ -30,6 +31,7 @@ const ACCENT_CLASS: Record<GFGameCardAccent, string> = {
   facepong: styles.accentFacepong,
   facecard: styles.accentFacecard,
   blinkstacker: styles.accentBlinkstacker,
+  blinkstackerduel: styles.accentBlinkstackerduel,
   friends: styles.accentFriends,
   tiptionary: styles.accentTiptionary,
 };
@@ -41,6 +43,7 @@ const ACCENT_ICON: Record<GFGameCardAccent, string> = {
   facepong: "🏓",
   facecard: "🎴",
   blinkstacker: "▣",
+  blinkstackerduel: "⚔",
   friends: "👥",
   tiptionary: "👃",
 };

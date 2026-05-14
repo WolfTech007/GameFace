@@ -58,6 +58,12 @@ export default function Page() {
               accent="blinkstacker"
               mode="solo"
             />
+            <GFGameCard
+              href="/blink-stacker-duel"
+              title="Blink Stacker Duel"
+              descriptor="1v1 · shared tower, blink to place."
+              accent="blinkstackerduel"
+            />
           </div>
         </section>
 
