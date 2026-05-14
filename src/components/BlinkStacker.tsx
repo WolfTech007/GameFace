@@ -21,6 +21,11 @@ import {
 } from "@/lib/blinkStacker/constants";
 import { combinedEar, createBlinkEdgeDetector } from "@/lib/blinkStacker/ear";
 import { horizontalOverlap, overlapFractionOfMoving, type HSegment } from "@/lib/blinkStacker/overlap";
+import {
+  computeCameraTargetY,
+  layoutFromCanvasHeight,
+  smoothCamera,
+} from "@/lib/blinkStacker/camera";
 import { readBlinkStackerBest, writeBlinkStackerBest } from "@/lib/blinkStacker/storage";
 import styles from "./BlinkStacker.module.css";
 
@@ -45,6 +50,8 @@ type GameModel = {
   speedPx: number;
   particles: Particle[];
   lost: boolean;
+  /** Screen offset: drawn Y = world Y + cameraY (follows tall stacks). */
+  cameraY: number;
 };
 
 function clamp(v: number, lo: number, hi: number) {
@@ -166,6 +173,7 @@ export default function BlinkStacker() {
       speedPx: SPEED_BASE_PX,
       particles: [],
       lost: false,
+      cameraY: 0,
     };
   }, []);
 
@@ -200,10 +208,7 @@ export default function BlinkStacker() {
       gm.lost = true;
       const arenaW = canvas.width * 0.88;
       const arenaLeft = (canvas.width - arenaW) / 2;
-      const floorY = canvas.height - 40;
-      const blockH = Math.max(18, Math.min(32, canvas.height * 0.045));
-      const gap = Math.max(4, blockH * 0.18);
-      const floatExtra = 12;
+      const { floorY, blockH, gap, floatExtra } = layoutFromCanvasHeight(canvas.height);
       const floatBottom = floorY - gm.stack.length * (blockH + gap) - floatExtra;
       const cx = arenaLeft + gm.movingCenterN * arenaW;
       const mw = gm.movingWn * arenaW;
@@ -289,13 +294,14 @@ export default function BlinkStacker() {
 
     const arenaW = w * 0.88;
     const arenaLeft = (w - arenaW) / 2;
-    const floorY = h - 40;
-    const blockH = Math.max(18, Math.min(32, h * 0.045));
-    const gap = Math.max(4, blockH * 0.18);
-    const floatExtra = 12;
+    const { floorY, blockH, gap, floatExtra } = layoutFromCanvasHeight(h);
+    const cam = gm.cameraY;
+
+    ctx.save();
+    ctx.translate(0, cam);
 
     ctx.fillStyle = "rgba(56, 189, 248, 0.04)";
-    ctx.fillRect(arenaLeft, 0, arenaW, h);
+    ctx.fillRect(arenaLeft, -h * 2, arenaW, h * 5);
 
     gm.stack.forEach((seg, i) => {
       const bottomY = floorY - i * (blockH + gap);
@@ -319,6 +325,8 @@ export default function BlinkStacker() {
       ctx.arc(p.x, p.y, 4 * a + 1, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    ctx.restore();
   }, []);
 
   const gameLoop = useCallback(
@@ -351,6 +359,18 @@ export default function BlinkStacker() {
           gm.vxSign = -1;
         }
         gm.movingCenterN = next;
+
+        const { h, floorY, blockH, gap, floatExtra } = layoutFromCanvasHeight(canvas.height);
+        const target = computeCameraTargetY({
+          canvasH: h,
+          floorY,
+          blockH,
+          gap,
+          floatExtra,
+          stackLen: gm.stack.length,
+        });
+        if (reduceMotionRef.current) gm.cameraY = target;
+        else gm.cameraY = smoothCamera(gm.cameraY, target, dt, 12);
       }
 
       if (gm.lost && gm.particles.length) {
