@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GFBottomNav } from "@/components/gameface/GFBottomNav";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { ensureProfile } from "@/lib/gameface/profileStore";
 import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
 import { BLINK_COOLDOWN_MS } from "@/lib/blinkStacker/constants";
 import { combinedEar, createBlinkEdgeDetector } from "@/lib/blinkStacker/ear";
@@ -188,7 +189,6 @@ export default function BlinkStackerDuel({
 }: BlinkStackerDuelProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
-  const clientId = profile.userId;
 
   const [localPhase, setLocalPhase] = useState<LocalPhase>(() => (autoJoinPublicQueue ? "queue" : "intro"));
   const localPhaseRef = useRef(localPhase);
@@ -279,6 +279,7 @@ export default function BlinkStackerDuel({
   }, []);
 
   async function leaveQueue() {
+    const clientId = ensureProfile().userId;
     try {
       await fetch("/api/blink-stacker-duel/queue", {
         method: "POST",
@@ -554,6 +555,7 @@ export default function BlinkStackerDuel({
   }
 
   async function findMatch() {
+    const clientId = ensureProfile().userId;
     setLocalPhase("queue");
     setStatus("Finding opponent…");
     const res = await fetch("/api/blink-stacker-duel/queue", {

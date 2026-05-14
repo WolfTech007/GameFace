@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState } from "react";
 import {
   ensureProfile,
   loadProfile,
@@ -35,6 +35,13 @@ export function GameFaceProfileProvider({ children }: { children: React.ReactNod
     seedDemoActivity();
     return p;
   });
+
+  useLayoutEffect(() => {
+    const p = ensureProfile();
+    seedDemoFriends(p);
+    seedDemoActivity();
+    setState(p);
+  }, []);
 
   const refresh = useCallback(() => {
     const p = loadProfile();
