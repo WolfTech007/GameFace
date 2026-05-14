@@ -142,12 +142,12 @@ function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: Blink
   const arenaW = w * 0.88;
   const arenaLeft = (w - arenaW) / 2;
   const { floorY, blockH, gap, floatExtra } = layoutFromCanvasHeight(h);
-  const cam = s.cam;
+  const cam = Number.isFinite(s.cam) ? s.cam : 0;
 
   ctx.save();
   ctx.translate(0, cam);
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+  ctx.fillStyle = "rgba(56, 189, 248, 0.04)";
   ctx.fillRect(arenaLeft, -h * 2, arenaW, h * 5);
 
   s.tower.forEach((seg, i) => {
@@ -190,6 +190,8 @@ export default function BlinkStackerDuel({
   useEffect(() => {
     uiPhaseRef.current = uiPhase;
   }, [uiPhase]);
+
+  const showArena = uiPhase === "playing" || uiPhase === "gameover";
 
   const [role, setRole] = useState<Role | null>(null);
   const roleRef = useRef<Role | null>(null);
@@ -740,18 +742,23 @@ export default function BlinkStackerDuel({
   }, []);
 
   useEffect(() => {
+    if (!showArena) return;
     const stage = stageRef.current;
     const canvas = canvasRef.current;
     if (!stage || !canvas) return;
-    const ro = new ResizeObserver(() => {
+
+    const measure = () => {
       const r = stage.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.max(180, Math.floor(r.width * dpr));
       canvas.height = Math.max(320, Math.floor(r.height * dpr));
-    });
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(stage);
     return () => ro.disconnect();
-  }, []);
+  }, [showArena]);
 
   useEffect(() => {
     let raf = 0;
@@ -850,7 +857,6 @@ export default function BlinkStackerDuel({
   const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
   const showGameOver = uiPhase === "gameover";
-  const showArena = uiPhase === "playing" || uiPhase === "gameover";
 
   const net = getDrawState();
   const iAmBlue = role === "host";
