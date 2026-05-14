@@ -1,3 +1,5 @@
+"use client";
+
 import { GamePlayEntrance } from "@/components/gameface/GamePlayEntrance";
 import BlinkStackerDuel from "@/components/BlinkStackerDuel";
 
