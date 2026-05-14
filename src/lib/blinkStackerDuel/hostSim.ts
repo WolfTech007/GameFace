@@ -9,7 +9,6 @@ import { horizontalOverlap, overlapFractionOfMoving } from "@/lib/blinkStacker/o
 import type { BlinkStackerDuelNetState, BrickOwner } from "./netTypes";
 
 const BASE_WN = 0.72;
-export const TURN_BANNER_MS = 1100;
 const COUNTDOWN_TOTAL_MS = 3100;
 
 export type HostRuntime = {
@@ -78,20 +77,15 @@ export function hostTickTimeTransitions(rt: HostRuntime, now: number) {
   }
   if (s.phase === "countdown" && s.cde != null && now >= s.cde) {
     rt.pendingCountdown = false;
-    s.phase = "turn_banner";
-    s.banner = "BLUE TURN";
-    s.tbe = now + TURN_BANNER_MS;
+    s.phase = "moving";
+    s.banner = null;
+    s.tbe = undefined;
     s.cd = undefined;
     s.cde = undefined;
     s.activeBlue = true;
-    return;
-  }
-  if (s.phase === "turn_banner" && s.tbe != null && now >= s.tbe) {
-    s.phase = "moving";
-    s.tbe = undefined;
-    s.banner = null;
     s.vx = Math.random() < 0.5 ? 1 : -1;
     s.brickEpoch += 1;
+    return;
   }
 }
 
@@ -113,7 +107,7 @@ export function hostAdvanceMoving(s: BlinkStackerDuelNetState, dt: number, arena
 }
 
 export function hostUpdateCamera(s: BlinkStackerDuelNetState, dt: number, canvasH: number, reduceMotion: boolean) {
-  if (s.phase !== "moving" && s.phase !== "turn_banner" && s.phase !== "gameover") return;
+  if (s.phase !== "moving" && s.phase !== "gameover" && s.phase !== "countdown") return;
   const { h, floorY, blockH, gap, floatExtra } = layoutFromCanvasHeight(canvasH);
   const target = computeCameraTargetY({
     canvasH: h,
@@ -150,9 +144,10 @@ export function hostApplyStop(rt: HostRuntime, now: number): { miss: boolean } {
     s.mwn = 0.65;
     s.mcn = 0.5;
     s.vx = Math.random() < 0.5 ? 1 : -1;
-    s.phase = "turn_banner";
-    s.banner = s.activeBlue ? "BLUE TURN" : "RED TURN";
-    s.tbe = now + TURN_BANNER_MS;
+    s.phase = "moving";
+    s.banner = null;
+    s.tbe = undefined;
+    s.brickEpoch += 1;
     return { miss: false };
   }
 
@@ -170,8 +165,10 @@ export function hostApplyStop(rt: HostRuntime, now: number): { miss: boolean } {
   s.speedPx = Math.min(SPEED_MAX_PX, SPEED_BASE_PX + SPEED_PER_LEVEL_PX * (s.tower.length - 1));
   s.activeBlue = !s.activeBlue;
   s.level = s.tower.length;
-  s.phase = "turn_banner";
-  s.banner = s.activeBlue ? "BLUE TURN" : "RED TURN";
-  s.tbe = now + TURN_BANNER_MS;
+  s.phase = "moving";
+  s.banner = null;
+  s.tbe = undefined;
+  s.vx = Math.random() < 0.5 ? 1 : -1;
+  s.brickEpoch += 1;
   return { miss: false };
 }

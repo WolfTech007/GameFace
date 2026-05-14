@@ -226,6 +226,7 @@ export default function BlinkStackerDuel({
   const lastBrickEpochStoppedRef = useRef(-1);
   const lastSeenBrickEpochRef = useRef(-1);
   const lastLoopRef = useRef<number | null>(null);
+  const lastStateRecvAtRef = useRef<number | null>(null);
   const loggedCanvasSizeRef = useRef(false);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -241,7 +242,6 @@ export default function BlinkStackerDuel({
   const [, bumpUi] = useReducer((x: number) => x + 1, 0);
   const lastGuestUiBumpRef = useRef(0);
   const lastHostUiBumpRef = useRef(0);
-  const [frameSize, setFrameSize] = useState({ width: 360, height: 640 });
 
   function maybeBumpGuestUi(force = false) {
     const t = nowMs();
@@ -601,6 +601,7 @@ export default function BlinkStackerDuel({
       if (msg.t !== "state") return;
       if (msg.seq <= lastGuestSeqRef.current) return;
       lastGuestSeqRef.current = msg.seq;
+      lastStateRecvAtRef.current = performance.now();
       const authoritative = cloneDuelState(msg.state);
       duelNetRef.current = authoritative;
       guestBrickEpochRef.current = authoritative.brickEpoch;
@@ -751,24 +752,6 @@ export default function BlinkStackerDuel({
   }, []);
 
   useEffect(() => {
-    const compute = () => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      let width = Math.min(vw * 0.92, 420);
-      let height = width * (16 / 9);
-      const availableHeight = Math.max(300, vh - 170);
-      if (height > availableHeight) {
-        height = availableHeight;
-        width = height * (9 / 16);
-      }
-      setFrameSize({ width: Math.floor(width), height: Math.floor(height) });
-    };
-    compute();
-    window.addEventListener("resize", compute);
-    return () => window.removeEventListener("resize", compute);
-  }, []);
-
-  useEffect(() => {
     if (!showArena) return;
     const stage = stageRef.current;
     const canvas = canvasRef.current;
@@ -862,10 +845,7 @@ export default function BlinkStackerDuel({
           bumpUi();
         }
         if (
-          (s.phase === "countdown" ||
-            s.phase === "turn_banner" ||
-            s.phase === "moving" ||
-            s.phase === "gameover") &&
+          (s.phase === "countdown" || s.phase === "moving" || s.phase === "gameover") &&
           uiPhaseRef.current === "lobby"
         ) {
           setUiPhase("playing");
@@ -876,14 +856,14 @@ export default function BlinkStackerDuel({
         if (s.phase === "moving" && canvas) {
           hostAdvanceMoving(s, dt, arenaW);
         }
-        if (s.phase === "moving" || s.phase === "turn_banner" || s.phase === "gameover" || s.phase === "countdown") {
+        if (s.phase === "moving" || s.phase === "gameover" || s.phase === "countdown") {
           hostUpdateCamera(s, dt, h, reduceMotionRef.current);
         }
         if (s.phase === "gameover" && uiPhaseRef.current !== "gameover") {
           setUiPhase("gameover");
         }
-        if (s.phase === "moving" || s.phase === "turn_banner" || s.phase === "gameover" || s.phase === "countdown") {
-          if (now - lastPlayBroadcastMsRef.current >= 66) {
+        if (s.phase === "moving" || s.phase === "gameover" || s.phase === "countdown") {
+          if (now - lastPlayBroadcastMsRef.current >= 33) {
             lastPlayBroadcastMsRef.current = now;
             broadcastAuthoritativeState();
           }
@@ -903,6 +883,20 @@ export default function BlinkStackerDuel({
 
       if (!canvas || !ctx) return;
       const ds = getDrawState();
+      if (roleRef.current === "guest" && ds.phase === "moving") {
+        const recvAt = lastStateRecvAtRef.current;
+        if (recvAt != null) {
+          const ageSec = Math.min(0.12, Math.max(0, (performance.now() - recvAt) / 1000));
+          const predicted = cloneDuelState(ds);
+          const wn = Math.max(0.01, predicted.mwn);
+          const half = wn / 2;
+          const deltaN = ((predicted.speedPx || 0) / Math.max(1, w * 0.88)) * ageSec;
+          const next = predicted.mcn + predicted.vx * deltaN;
+          predicted.mcn = Math.max(half, Math.min(1 - half, next));
+          drawScene(ctx, w, h, predicted);
+          return;
+        }
+      }
       drawScene(ctx, w, h, ds);
     };
     raf = requestAnimationFrame(loop);
@@ -991,7 +985,6 @@ export default function BlinkStackerDuel({
               <div
                 ref={stageRef}
                 className={styles.stage}
-                style={{ width: `${frameSize.width}px`, height: `${frameSize.height}px` }}
                 onPointerDown={(e) => {
                   e.preventDefault();
                   tryStopRef.current();
@@ -1008,12 +1001,6 @@ export default function BlinkStackerDuel({
                 {net.phase === "countdown" ? (
                   <div className={styles.layerUi}>
                     <div className={styles.count}>{net.cd ?? 3}</div>
-                  </div>
-                ) : null}
-
-                {net.phase === "turn_banner" && net.banner ? (
-                  <div className={styles.layerUi}>
-                    <div className={styles.banner}>{net.banner}</div>
                   </div>
                 ) : null}
 
@@ -1105,7 +1092,7 @@ export default function BlinkStackerDuel({
         </div>
       </main>
 
-      {uiPhase !== "playing" ? <GFBottomNav activeHref="/" /> : null}
+      {!showArena ? <GFBottomNav activeHref="/" /> : null}
     </div>
   );
 }
