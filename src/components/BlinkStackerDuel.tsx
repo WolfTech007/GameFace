@@ -734,15 +734,15 @@ export default function BlinkStackerDuel({
       lastLoopRef.current = ts;
 
       const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const w = canvas.width;
-      const h = canvas.height;
+      const ctx = canvas?.getContext("2d") ?? null;
+      const w = canvas?.width ?? 360;
+      const h = canvas?.height ?? 640;
 
       const isHost = roleRef.current === "host";
       const rt = hostRtRef.current;
 
+      // Host sim must run even while lobby UI is up: `showArena` is false in lobby, so the canvas
+      // is unmounted — FacePong keeps its surface mounted; here we tick time transitions without a canvas.
       if (isHost && rt && opponentConnected) {
         const s = rt.state;
         if (s.brickEpoch !== lastSeenBrickEpochRef.current) {
@@ -751,7 +751,14 @@ export default function BlinkStackerDuel({
         }
 
         const now = nowMs();
+        const phaseBeforeTick = s.phase;
         hostTickTimeTransitions(rt, now);
+        if (phaseBeforeTick === "lobby" && s.phase !== "lobby") {
+          log("lobby cleared — broadcasting first post-lobby state", s.phase);
+          lastPlayBroadcastMsRef.current = now;
+          broadcastAuthoritativeState();
+          bumpUi();
+        }
         if (
           (s.phase === "countdown" ||
             s.phase === "turn_banner" ||
@@ -764,8 +771,8 @@ export default function BlinkStackerDuel({
         if (s.phase === "countdown" && s.cde != null) {
           s.cd = countdownSecondsLeft(now, s.cde);
         }
-        if (s.phase === "moving") {
-          const arenaW = w * 0.88;
+        if (s.phase === "moving" && canvas) {
+          const arenaW = canvas.width * 0.88;
           hostAdvanceMoving(s, dt, arenaW);
         }
         if (s.phase === "moving" || s.phase === "turn_banner" || s.phase === "gameover" || s.phase === "countdown") {
@@ -793,6 +800,7 @@ export default function BlinkStackerDuel({
 
       visionStep(ts);
 
+      if (!canvas || !ctx) return;
       const ds = getDrawState();
       drawScene(ctx, w, h, ds);
     };
