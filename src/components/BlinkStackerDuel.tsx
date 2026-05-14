@@ -758,7 +758,9 @@ export default function BlinkStackerDuel({
 
         {localPhase === "arena" ? (
           <div ref={stageRef} className={`${styles.stage} ${uiShake ? styles.shake : ""}`}>
-            <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
+            <div className={styles.remoteShell}>
+              <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
+            </div>
             <canvas
               ref={canvasRef}
               className={styles.overlayCanvas}
@@ -769,6 +771,17 @@ export default function BlinkStackerDuel({
             <div className={styles.pip}>
               <video ref={pipVideoRef} playsInline muted autoPlay className={styles.pipInner} />
             </div>
+
+            {matchRole === "guest" && guestView == null ? (
+              <div className={styles.layerUi}>
+                <div className={styles.lobbyPanel}>
+                  <p className={styles.lobbyTitle}>Connecting</p>
+                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, color: "rgba(200,210,230,0.9)" }}>
+                    Syncing with host… If this lasts more than a few seconds, try leaving and finding a new match.
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
             {displayState?.phase === "lobby" ? (
               <div className={styles.layerUi}>

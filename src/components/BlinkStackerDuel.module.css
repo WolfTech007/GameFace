@@ -69,14 +69,25 @@
     inset 0 0 60px rgba(251, 81, 81, 0.05);
 }
 
-.remote {
+.remoteShell {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scaleX(-1);
+  overflow: hidden;
   background: #050508;
+}
+
+.remote {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  min-width: 100%;
+  min-height: 100%;
+  width: auto;
+  height: auto;
+  transform: translate(-50%, -50%) scaleX(-1);
+  object-fit: cover;
+  object-position: center center;
+  -webkit-transform: translate(-50%, -50%) scaleX(-1);
 }
 
 .overlayCanvas {
@@ -105,9 +116,17 @@
 }
 
 .pipInner {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  min-width: 100%;
+  min-height: 100%;
+  width: auto;
+  height: auto;
+  transform: translate(-50%, -50%) scaleX(-1);
   object-fit: cover;
+  object-position: center center;
+  -webkit-transform: translate(-50%, -50%) scaleX(-1);
   display: block;
 }
 

@@ -79,9 +79,17 @@ export function connectGuestToHost(peer: Peer, roomId: string, opts?: { reliable
   });
 }
 
+/** Resolves when the guest data channel is actually open (writable), not only when the socket is offered. */
 export function waitForHostConnection(peer: Peer) {
-  return new Promise<DataConnection>((resolve) => {
-    peer.on("connection", (conn) => resolve(conn));
+  return new Promise<DataConnection>((resolve, reject) => {
+    const onConn = (conn: DataConnection) => {
+      peer.off("connection", onConn);
+      const finish = () => resolve(conn);
+      if (conn.open) finish();
+      else conn.on("open", finish);
+      conn.on("error", (e) => reject(e));
+    };
+    peer.on("connection", onConn);
   });
 }
 
