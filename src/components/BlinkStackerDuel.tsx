@@ -219,6 +219,7 @@ export default function BlinkStackerDuel({
   const lastBrickEpochStoppedRef = useRef(-1);
   const lastSeenBrickEpochRef = useRef(-1);
   const lastLoopRef = useRef<number | null>(null);
+  const loggedCanvasSizeRef = useRef(false);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -769,6 +770,21 @@ export default function BlinkStackerDuel({
       lastLoopRef.current = ts;
 
       const canvas = canvasRef.current;
+      const stage = stageRef.current;
+      if (canvas && stage) {
+        const r = stage.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const nextW = Math.max(180, Math.floor(r.width * dpr));
+        const nextH = Math.max(320, Math.floor(r.height * dpr));
+        if (canvas.width !== nextW || canvas.height !== nextH) {
+          canvas.width = nextW;
+          canvas.height = nextH;
+          if (!loggedCanvasSizeRef.current) {
+            log("canvas sized", { w: nextW, h: nextH, cssW: Math.floor(r.width), cssH: Math.floor(r.height), dpr });
+            loggedCanvasSizeRef.current = true;
+          }
+        }
+      }
       const ctx = canvas?.getContext("2d") ?? null;
       const w = canvas?.width ?? 360;
       const h = canvas?.height ?? 640;
