@@ -1,7 +1,7 @@
 "use client";
 
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
-import React, { useEffect, useReducer, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   connectGuestToHost,
@@ -180,7 +180,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     uiPhaseRef.current = uiPhase;
   }, [uiPhase]);
 
-  const showArena = uiPhase === "playing" || uiPhase === "gameover";
+  const showArena = uiPhase === "lobby" || uiPhase === "playing" || uiPhase === "gameover";
   const [role, setRole] = useState<Role | null>(null);
   const roleRef = useRef<Role | null>(null);
   useEffect(() => {
@@ -191,8 +191,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const [status, setStatus] = useState(() => (autoJoinPublicQueue ? "Searching for opponent…" : fromRandomMatch ? "Connecting…" : "Idle"));
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
-  const [remoteVideoLive, setRemoteVideoLive] = useState(false);
-
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
   const matchPollRef = useRef<number | null>(null);
@@ -205,14 +203,13 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const lastBrickEpochStoppedRef = useRef(-1);
   const lastSeenBrickEpochRef = useRef(-1);
   const lastLoopRef = useRef<number | null>(null);
-  const lastStateRecvAtRef = useRef<number | null>(null);
-  const lastVisionAtRef = useRef(0);
   const turnStartAtRef = useRef(0);
   const lastHintBrickEpochRef = useRef(-1);
   const hideHintUntilRef = useRef(0);
   const reduceMotionRef = useRef(false);
   const canvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const remoteAttachSeqRef = useRef(0);
+  const pendingRemoteStreamRef = useRef<MediaStream | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -239,13 +236,14 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       streamId: stream.id,
       tracks: stream.getVideoTracks().map((t) => t.id),
     });
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = stream;
-      remoteVideoRef.current.muted = true;
-      setRemoteVideoLive(true);
-      void remoteVideoRef.current.play().catch(() => {
-        /* fallback stays visible if play is blocked */
-      });
+    const el = remoteVideoRef.current;
+    if (el) {
+      el.srcObject = stream;
+      el.muted = true;
+      void el.play().catch(() => {});
+    } else {
+      pendingRemoteStreamRef.current = stream;
+      log("remote video not mounted yet; holding stream until arena mounts");
     }
   }
 
@@ -318,7 +316,8 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     hostRtRef.current = null;
     landmarkerRef.current = null;
     blinkDetRef.current = null;
-    setRemoteVideoLive(false);
+    pendingRemoteStreamRef.current = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
   }
 
   function sendToHost(msg: GuestToHostStackUpMsg) {
@@ -429,9 +428,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const tryStopRef = useRef<() => void>(() => {});
 
   const visionStep = (ts: number) => {
-    // MediaPipe at full RAF rate causes noticeable stutter on mobile.
-    if (ts - lastVisionAtRef.current < 66) return;
-    lastVisionAtRef.current = ts;
     const video = localVideoRef.current;
     const lm = landmarkerRef.current;
     if (!video || !lm || video.readyState < 2) return;
@@ -524,7 +520,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     conn.on("close", () => {
       setOpponentConnected(false);
       setOpponentLeftMatch(true);
-      setRemoteVideoLive(false);
     });
 
     if (conn.open) broadcastAuthoritativeState();
@@ -552,7 +547,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       if (msg.t !== "state") return;
       if (msg.seq <= lastGuestSeqRef.current) return;
       lastGuestSeqRef.current = msg.seq;
-      lastStateRecvAtRef.current = performance.now();
       const authoritative = cloneStackUpState(msg.state);
       netRef.current = authoritative;
       guestBrickEpochRef.current = authoritative.brickEpoch;
@@ -567,7 +561,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     conn.on("close", () => {
       setOpponentConnected(false);
       setOpponentLeftMatch(true);
-      setRemoteVideoLive(false);
     });
 
     const call = peer.call(rid, stream);
@@ -589,6 +582,8 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     }
     setStatus("Connecting…");
     try {
+      setOpponentLeftMatch(false);
+      setUiPhase("lobby");
       if (r === "host") await connectAsHost(peerRoomId);
       else await connectAsGuest(peerRoomId);
       try {
@@ -598,8 +593,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       }
       blinkDetRef.current = createBlinkEdgeDetector({ threshold: 0.19, cooldownMs: BLINK_COOLDOWN_MS });
       blinkDetRef.current.reset();
-      setOpponentLeftMatch(false);
-      setUiPhase("lobby");
     } catch {
       cleanup();
       setStatus("Connection failed. Try again.");
@@ -735,26 +728,11 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
         }
       }
 
-      visionStep(ts);
       if (!canvas || !ctx) return;
       const ds = getDrawState();
       if (ds.brickEpoch !== lastHintBrickEpochRef.current) {
         lastHintBrickEpochRef.current = ds.brickEpoch;
         turnStartAtRef.current = performance.now();
-      }
-      if (roleRef.current === "guest" && ds.phase === "moving") {
-        const recvAt = lastStateRecvAtRef.current;
-        if (recvAt != null) {
-          const ageSec = Math.min(0.12, Math.max(0, (performance.now() - recvAt) / 1000));
-          const predicted = cloneStackUpState(ds);
-          const wn = Math.max(0.01, predicted.mwn);
-          const half = wn / 2;
-          const deltaN = ((predicted.speedPx || 0) / Math.max(1, w * 0.88)) * ageSec;
-          const next = predicted.mcn + predicted.vx * deltaN;
-          predicted.mcn = Math.max(half, Math.min(1 - half, next));
-          drawScene(ctx, w, h, predicted);
-          return;
-        }
       }
       drawScene(ctx, w, h, ds);
     };
@@ -772,17 +750,22 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     }
   }, [uiPhase, role]);
 
+  useLayoutEffect(() => {
+    if (!showArena) return;
+    const el = remoteVideoRef.current;
+    const pending = pendingRemoteStreamRef.current;
+    if (!el || !pending) return;
+    el.srcObject = pending;
+    pendingRemoteStreamRef.current = null;
+    el.muted = true;
+    void el.play().catch(() => {});
+  }, [showArena, opponentConnected]);
+
   useEffect(() => {
     if (!showArena) return;
-    const id = window.setInterval(() => {
-      const v = remoteVideoRef.current;
-      if (!v) return;
-      const hasStream = !!v.srcObject;
-      const hasFrame = v.readyState >= 2 && v.videoWidth > 0 && v.videoHeight > 0;
-      if (hasStream && hasFrame && !remoteVideoLive) setRemoteVideoLive(true);
-    }, 250);
+    const id = window.setInterval(() => visionStep(performance.now()), 80);
     return () => window.clearInterval(id);
-  }, [showArena, remoteVideoLive]);
+  }, [showArena]);
 
   const showMenu = uiPhase === "menu";
   const showMatchmaking = uiPhase === "matchmaking";
@@ -840,7 +823,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
       <header className={styles.topBar}>
         <span className={styles.brand}>STACK UP</span>
-        {showArena ? (
+        {showArena && uiPhase !== "lobby" ? (
           <div className={styles.topHud}>
             <div className={styles.scorePill}>SCORE {sharedScore}</div>
             <div className={`${styles.turnPill} ${myTurn ? "" : styles.turnPillOpponent}`}>
@@ -863,16 +846,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
             }}
           >
             <div className={styles.remoteShell}>
-              <video
-                ref={remoteVideoRef}
-                className={`${styles.remote} ${remoteVideoLive ? styles.remoteLive : styles.remoteHidden}`}
-                playsInline
-                autoPlay
-                muted
-                onLoadedMetadata={() => setRemoteVideoLive(true)}
-                onLoadedData={() => setRemoteVideoLive(true)}
-                onPlaying={() => setRemoteVideoLive(true)}
-              />
+              <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
             </div>
             <canvas ref={canvasRef} className={styles.overlayCanvas} />
             <div className={styles.pip}>
@@ -947,38 +921,40 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
         ) : null}
 
         {showLobby ? (
-          <div className={styles.menuWrap}>
-            <div className={styles.menuCard}>
-              <div className={styles.title}>Lobby</div>
-              <p className={styles.sub}>Ready up — match starts when both players are ready.</p>
-              <p className={styles.subMuted}>
-                {opponentConnected
-                  ? role === "host"
-                    ? readyGuest
-                      ? "Opponent is ready."
-                      : "Waiting for opponent…"
-                    : readyHost
-                      ? "Opponent is ready."
-                      : "Waiting for opponent…"
-                  : "Waiting for opponent…"}
-              </p>
-              <div className={styles.row}>
-                {opponentConnected ? (
-                  <button
-                    type="button"
-                    className={(role === "host" ? readyHost : readyGuest) ? styles.buttonReady : styles.button}
-                    onClick={toggleLobbyReady}
-                  >
-                    {(role === "host" ? readyHost : readyGuest) ? "Ready ✓" : "Ready"}
+          <div className={styles.lobbyLayer}>
+            <div className={styles.menuWrap}>
+              <div className={styles.menuCard}>
+                <div className={styles.title}>Lobby</div>
+                <p className={styles.sub}>Ready up — match starts when both players are ready.</p>
+                <p className={styles.subMuted}>
+                  {opponentConnected
+                    ? role === "host"
+                      ? readyGuest
+                        ? "Opponent is ready."
+                        : "Waiting for opponent…"
+                      : readyHost
+                        ? "Opponent is ready."
+                        : "Waiting for opponent…"
+                    : "Waiting for opponent…"}
+                </p>
+                <div className={styles.row}>
+                  {opponentConnected ? (
+                    <button
+                      type="button"
+                      className={(role === "host" ? readyHost : readyGuest) ? styles.buttonReady : styles.button}
+                      onClick={toggleLobbyReady}
+                    >
+                      {(role === "host" ? readyHost : readyGuest) ? "Ready ✓" : "Ready"}
+                    </button>
+                  ) : null}
+                </div>
+                <div className={styles.row}>
+                  <button type="button" className={styles.buttonSecondary} onClick={leaveMatch}>
+                    Back
                   </button>
-                ) : null}
+                </div>
+                <p className={styles.status}>{status}</p>
               </div>
-              <div className={styles.row}>
-                <button type="button" className={styles.buttonSecondary} onClick={leaveMatch}>
-                  Back
-                </button>
-              </div>
-              <p className={styles.status}>{status}</p>
             </div>
           </div>
         ) : null}
