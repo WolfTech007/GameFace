@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import {
   describeSignUpError,
+  isSignupDuplicateEmailAuthError,
+  isSignupDuplicateEmailUser,
   isUniqueViolation,
   normalizeUsername,
   validateUsernameFormat,
@@ -27,6 +29,7 @@ function SignupBody() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [duplicateEmail, setDuplicateEmail] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -61,6 +64,7 @@ function SignupBody() {
   async function onFinishProfile(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setDuplicateEmail(false);
     setSuccess(null);
 
     const fmt = validateUsernameFormat(usernameRaw);
@@ -113,6 +117,7 @@ function SignupBody() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setDuplicateEmail(false);
     setSuccess(null);
 
     const fmt = validateUsernameFormat(usernameRaw);
@@ -168,11 +173,25 @@ function SignupBody() {
       });
 
       if (signErr) {
+        if (isSignupDuplicateEmailAuthError(signErr)) {
+          setDuplicateEmail(true);
+          return;
+        }
         setError(describeSignUpError(signErr));
         return;
       }
 
+      const signupUser = data.user ?? null;
+      if (isSignupDuplicateEmailUser(signupUser)) {
+        setDuplicateEmail(true);
+        return;
+      }
+
       if (!data.session?.user) {
+        if (!signupUser) {
+          setError("Could not complete signup. Try again.");
+          return;
+        }
         setSuccess("Check your email to confirm your account!");
         return;
       }
@@ -250,6 +269,15 @@ function SignupBody() {
     <>
       <h1 className={styles.title}>Create account</h1>
       <p className={styles.sub}>Choose a username and sign up with email.</p>
+
+      {duplicateEmail ? (
+        <p className={styles.errorText} role="alert">
+          Email already in use.{" "}
+          <Link href="/login" className={styles.inlineLink}>
+            Log in?
+          </Link>
+        </p>
+      ) : null}
 
       {error ? (
         <p className={styles.errorText} role="alert">
