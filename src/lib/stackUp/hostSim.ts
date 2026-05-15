@@ -5,6 +5,7 @@ import type { StackUpNetState, StackUpOwner } from "./netTypes";
 
 const BASE_WN = 0.7;
 const COUNTDOWN_TOTAL_MS = 3200;
+const SPEED_MULT = 1.35;
 
 export type StackUpHostRuntime = {
   state: StackUpNetState;
@@ -27,7 +28,7 @@ export function makeInitialStackUpState(): StackUpNetState {
     mcn: 0.5,
     mwn: BASE_WN,
     vx: Math.random() < 0.5 ? 1 : -1,
-    speedPx: SPEED_BASE_PX,
+    speedPx: SPEED_BASE_PX * SPEED_MULT,
     level: 1,
     cam: 0,
     pulse: 0,
@@ -157,7 +158,7 @@ export function hostApplyStop(rt: StackUpHostRuntime, now: number): { miss: bool
   const perfect = Math.abs(overlapLen - s.mwn) / Math.max(0.001, s.mwn) < 0.03;
   s.mwn = overlapLen;
   s.mcn = overlapLeft + overlapLen / 2;
-  s.speedPx = Math.min(SPEED_MAX_PX, SPEED_BASE_PX + SPEED_PER_LEVEL_PX * (s.tower.length - 1));
+  s.speedPx = Math.min(SPEED_MAX_PX * 1.25, (SPEED_BASE_PX + SPEED_PER_LEVEL_PX * (s.tower.length - 1)) * SPEED_MULT);
   s.activeBlue = !s.activeBlue;
   s.level = s.tower.length;
   s.phase = "moving";

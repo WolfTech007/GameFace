@@ -206,10 +206,13 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const lastSeenBrickEpochRef = useRef(-1);
   const lastLoopRef = useRef<number | null>(null);
   const lastStateRecvAtRef = useRef<number | null>(null);
+  const lastVisionAtRef = useRef(0);
   const turnStartAtRef = useRef(0);
   const lastHintBrickEpochRef = useRef(-1);
   const hideHintUntilRef = useRef(0);
   const reduceMotionRef = useRef(false);
+  const canvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const remoteAttachSeqRef = useRef(0);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -226,15 +229,23 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
   function attachRemoteStream(stream: MediaStream) {
     const local = localStreamRef.current;
-    const localTrackId = local?.getVideoTracks?.()[0]?.id;
-    const remoteTrackId = stream.getVideoTracks?.()[0]?.id;
-    if ((local && stream.id === local.id) || (localTrackId && remoteTrackId && localTrackId === remoteTrackId)) {
+    if (local && stream === local) {
       log("ignoring local stream assigned as remote");
       return;
     }
+    remoteAttachSeqRef.current += 1;
+    log("attach remote stream", {
+      seq: remoteAttachSeqRef.current,
+      streamId: stream.id,
+      tracks: stream.getVideoTracks().map((t) => t.id),
+    });
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = stream;
-      void remoteVideoRef.current.play();
+      remoteVideoRef.current.muted = true;
+      setRemoteVideoLive(true);
+      void remoteVideoRef.current.play().catch(() => {
+        /* fallback stays visible if play is blocked */
+      });
     }
   }
 
@@ -418,6 +429,9 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const tryStopRef = useRef<() => void>(() => {});
 
   const visionStep = (ts: number) => {
+    // MediaPipe at full RAF rate causes noticeable stutter on mobile.
+    if (ts - lastVisionAtRef.current < 66) return;
+    lastVisionAtRef.current = ts;
     const video = localVideoRef.current;
     const lm = landmarkerRef.current;
     if (!video || !lm || video.readyState < 2) return;
@@ -663,18 +677,9 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       lastLoopRef.current = ts;
 
       const canvas = canvasRef.current;
-      const stage = stageRef.current;
-      if (canvas && stage) {
-        const r = stage.getBoundingClientRect();
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const nextW = Math.max(200, Math.floor(r.width * dpr));
-        const nextH = Math.max(360, Math.floor(r.height * dpr));
-        if (canvas.width !== nextW || canvas.height !== nextH) {
-          canvas.width = nextW;
-          canvas.height = nextH;
-        }
-      }
-      const ctx = canvas?.getContext("2d") ?? null;
+      const ctx = canvas
+        ? (canvasCtxRef.current ?? (canvasCtxRef.current = canvas.getContext("2d", { alpha: true, desynchronized: true })))
+        : null;
       const w = canvas?.width ?? 360;
       const h = canvas?.height ?? 640;
 
@@ -767,6 +772,18 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     }
   }, [uiPhase, role]);
 
+  useEffect(() => {
+    if (!showArena) return;
+    const id = window.setInterval(() => {
+      const v = remoteVideoRef.current;
+      if (!v) return;
+      const hasStream = !!v.srcObject;
+      const hasFrame = v.readyState >= 2 && v.videoWidth > 0 && v.videoHeight > 0;
+      if (hasStream && hasFrame && !remoteVideoLive) setRemoteVideoLive(true);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [showArena, remoteVideoLive]);
+
   const showMenu = uiPhase === "menu";
   const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
@@ -852,10 +869,9 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
                 playsInline
                 autoPlay
                 muted
+                onLoadedMetadata={() => setRemoteVideoLive(true)}
                 onLoadedData={() => setRemoteVideoLive(true)}
                 onPlaying={() => setRemoteVideoLive(true)}
-                onEmptied={() => setRemoteVideoLive(false)}
-                onPause={() => setRemoteVideoLive(false)}
               />
             </div>
             <canvas ref={canvasRef} className={styles.overlayCanvas} />
