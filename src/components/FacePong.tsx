@@ -207,10 +207,35 @@ export default function FacePong({
       }) ?? null;
   }
 
+  async function bindStreamToLocalPreview(stream: MediaStream): Promise<void> {
+    for (let i = 0; i < 90; i++) {
+      const el = localVideoRef.current;
+      if (el) {
+        if (el.srcObject !== stream) el.srcObject = stream;
+        try {
+          await el.play();
+        } catch {
+          /* autoplay / visibility */
+        }
+        const hasFrame =
+          el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && (el.videoWidth > 0 || i > 45);
+        if (hasFrame) return;
+      }
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    }
+    const el = localVideoRef.current;
+    if (!el) throw new Error("Camera preview not ready.");
+    if (el.srcObject !== stream) el.srcObject = stream;
+    await el.play().catch(() => {});
+  }
+
   async function ensureLocalCamera(opts?: { force?: boolean }) {
     if (localStreamRef.current && !opts?.force) {
       const hasAudio = localStreamRef.current.getAudioTracks().length > 0;
       setMicOk(hasAudio);
+      await bindStreamToLocalPreview(localStreamRef.current);
       return localStreamRef.current;
     }
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -228,10 +253,7 @@ export default function FacePong({
     });
     localStreamRef.current = stream;
     setMicOk(stream.getAudioTracks().length > 0);
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-      await localVideoRef.current.play();
-    }
+    await bindStreamToLocalPreview(stream);
     return stream;
   }
 

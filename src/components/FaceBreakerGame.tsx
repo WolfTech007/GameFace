@@ -554,11 +554,17 @@ export default function FaceBreakerGame() {
         now - lastDetectMs >= 16
       ) {
         lastDetectMs = now;
-        const res = lm.detectForVideo(video, now);
+        let res: { faceLandmarks?: { x: number; y: number; z?: number }[][] };
+        try {
+          res = lm.detectForVideo(video, now);
+        } catch {
+          trackerRafRef.current = requestAnimationFrame(step);
+          return;
+        }
         const faces = res.faceLandmarks;
         if (faces && faces.length > 0) {
           const pts = faces[0];
-          const nose = pts[1] ?? pts[4] ?? pts[0];
+          const nose = pts[4] ?? pts[1] ?? pts[2] ?? pts[0];
           if (nose) {
             // Map nose -> on-screen X for mirrored selfie view.
             // Also correct for object-fit: cover cropping so the paddle matches what you see.
