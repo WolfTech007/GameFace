@@ -36,7 +36,7 @@ import {
 
 const QUEUE_POLL_MS = 600;
 const DEFAULT_INTRO = "/stack-up";
-const BLINK_COOLDOWN_MS = 250;
+const BLINK_COOLDOWN_MS = 180;
 const MIN_BRICK_PX = 40;
 const MIN_BRICK_H_PX = 24;
 
@@ -268,7 +268,12 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     if (localStreamRef.current) return localStreamRef.current;
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 1280 } },
+      video: {
+        facingMode: "user",
+        width: { ideal: 480, max: 640 },
+        height: { ideal: 640, max: 854 },
+        frameRate: { ideal: 30, max: 30 },
+      },
     });
     localStreamRef.current = stream;
     if (localVideoRef.current) {
@@ -595,7 +600,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       } catch {
         landmarkerRef.current = null;
       }
-      blinkDetRef.current = createBlinkEdgeDetector({ threshold: 0.19, cooldownMs: BLINK_COOLDOWN_MS });
+      blinkDetRef.current = createBlinkEdgeDetector({ threshold: 0.2, cooldownMs: BLINK_COOLDOWN_MS });
       blinkDetRef.current.reset();
     } catch {
       cleanup();
@@ -771,7 +776,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
   useEffect(() => {
     if (!showArena) return;
-    const id = window.setInterval(() => visionStep(performance.now()), 80);
+    const id = window.setInterval(() => visionStep(performance.now()), 33);
     return () => window.clearInterval(id);
   }, [showArena]);
 

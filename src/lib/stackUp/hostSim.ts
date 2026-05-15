@@ -5,7 +5,7 @@ import type { StackUpNetState, StackUpOwner } from "./netTypes";
 
 const BASE_WN = 0.7;
 const COUNTDOWN_TOTAL_MS = 3200;
-const SPEED_MULT = 2.05;
+const SPEED_MULT = 2.05 * 0.8;
 
 export type StackUpHostRuntime = {
   state: StackUpNetState;
