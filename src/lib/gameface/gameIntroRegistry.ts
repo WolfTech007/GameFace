@@ -32,7 +32,7 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
     slug: "charades",
     title: "CHARADES",
     description:
-      "Act out the word on screen and help your partner guess as many as possible before time runs out.",
+      "Same team, two 60-second bursts: one player clues while the other guesses, then you swap. Rack up one combined score — skip anytime for a fresh word.",
     accent: "charades",
     playPath: "/charades/play",
   },

@@ -20,8 +20,7 @@ import {
   type LipReaderNetState,
 } from "@/lib/lipreaderProtocol";
 import { guessMatchesSecret } from "@/lib/lipreaderGuess";
-import { RematchBar } from "@/components/RematchBar";
-import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
+import { emptyRematchIntent } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
@@ -31,6 +30,8 @@ import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdenti
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
+const SEGMENT_MS = 60_000;
+const ROLE_SWAP_MS = 1_500;
 /** Set true locally to verify round/guess sync; keep false in production. */
 const LIP_READER_UI_DEBUG = false;
 
@@ -64,7 +65,7 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
       lastErr = e;
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error("Could not connect to opponent.");
+    throw lastErr instanceof Error ? lastErr : new Error("Could not connect to teammate.");
 }
 
 export default function LipReader({
@@ -204,78 +205,106 @@ export default function LipReader({
     if (c?.open) c.send(msg);
   }
 
-  function finishRoundWin(s: LipReaderNetState) {
-    const elapsed = s.roundStartAt ? Date.now() - s.roundStartAt : 0;
-    s.sessionRematch = emptyRematchIntent();
-    s.phase = "round_result";
-    s.roundDurationMs = elapsed;
-    s.roundEndReason = "correct";
-    s.lastRoundWord = s.secretWord;
-    s.lastRoundTimeMs = elapsed;
-    s.lastRoundAttempts = s.attemptsThisRound;
+  function hostHandleSkip() {
+    const s = gameStateRef.current;
+    if (s.phase !== "playing") return;
+    s.secretWord = pickRandomWord(s.secretWord);
     s.guesserHint = null;
-    s.countdownN = null;
-    s.readyNextHost = false;
-    s.readyNextGuest = false;
-  }
-
-  function finishRoundOut(s: LipReaderNetState) {
-    const elapsed = s.roundStartAt ? Date.now() - s.roundStartAt : 0;
-    s.sessionRematch = emptyRematchIntent();
-    s.phase = "round_result";
-    s.roundDurationMs = elapsed;
-    s.roundEndReason = "out_of_guesses";
-    s.lastRoundWord = s.secretWord;
-    s.lastRoundTimeMs = elapsed;
-    s.lastRoundAttempts = s.attemptsThisRound;
-    s.guesserHint = null;
-    s.countdownN = null;
-    s.readyNextHost = false;
-    s.readyNextGuest = false;
+    broadcastToGuest();
   }
 
   function hostHandleGuess(raw: string) {
     const s = gameStateRef.current;
     if (s.phase !== "playing") return;
     const secret = s.secretWord;
-    s.attemptsThisRound += 1;
     if (guessMatchesSecret(secret, raw)) {
-      finishRoundWin(s);
+      s.teamScore += 1;
+      if (s.communicatorIsHost) s.scoreSegmentHost += 1;
+      else s.scoreSegmentGuest += 1;
+      s.secretWord = pickRandomWord(secret);
+      s.guesserHint = null;
       broadcastToGuest();
       return;
     }
-    s.guessesRemaining -= 1;
-    if (s.guessesRemaining <= 0) {
-      finishRoundOut(s);
-      broadcastToGuest();
-      return;
-    }
-    s.guesserHint = "Nope. Keep watching.";
+    s.guesserHint = "Nope — keep going!";
     broadcastToGuest();
     const tid = window.setTimeout(() => {
       if (gameStateRef.current.phase !== "playing") return;
       gameStateRef.current.guesserHint = null;
       broadcastToGuest();
-    }, 2800);
+    }, 450);
     scheduledTimersRef.current.push(tid);
   }
 
-  function scheduleCountdownFromHost(opts: { randomizeCommunicator: boolean }) {
+  function hostScheduleSegmentDeadline() {
+    const t = window.setTimeout(() => {
+      void hostOnSegmentTimerEnd();
+    }, SEGMENT_MS);
+    scheduledTimersRef.current.push(t);
+  }
+
+  function hostEnterPlayingSegment() {
+    clearScheduledTimers();
+    const cur = gameStateRef.current;
+    cur.phase = "playing";
+    const now = Date.now();
+    cur.segmentStartedAt = now;
+    cur.segmentEndsAt = now + SEGMENT_MS;
+    cur.countdownN = null;
+    cur.guesserHint = null;
+    if (!cur.secretWord) cur.secretWord = pickRandomWord(null);
+    broadcastToGuest();
+    hostScheduleSegmentDeadline();
+  }
+
+  function hostOnSegmentTimerEnd() {
+    if (roleRef.current !== "host") return;
+    const s = gameStateRef.current;
+    if (s.phase !== "playing") return;
+    if (s.segmentIndex === 1) {
+      clearScheduledTimers();
+      s.phase = "role_swap";
+      broadcastToGuest();
+      const t = window.setTimeout(() => {
+        if (roleRef.current !== "host") return;
+        const cur = gameStateRef.current;
+        if (cur.phase !== "role_swap") return;
+        cur.roundId += 1;
+        cur.segmentIndex = 2;
+        cur.communicatorIsHost = false;
+        cur.secretWord = pickRandomWord(null);
+        hostEnterPlayingSegment();
+      }, ROLE_SWAP_MS);
+      scheduledTimersRef.current.push(t);
+      return;
+    }
+    if (s.segmentIndex === 2) {
+      clearScheduledTimers();
+      s.phase = "session_complete";
+      s.segmentStartedAt = null;
+      s.segmentEndsAt = null;
+      s.secretWord = "";
+      s.sessionRematch = { host: false, guest: false };
+      broadcastToGuest();
+    }
+  }
+
+  function scheduleCountdownFromLobby() {
     clearScheduledTimers();
     const s = gameStateRef.current;
     s.sessionRematch = emptyRematchIntent();
     s.roundId += 1;
-    if (opts.randomizeCommunicator) {
-      s.communicatorIsHost = Math.random() < 0.5;
-    }
+    s.segmentIndex = 1;
+    s.communicatorIsHost = true;
+    s.teamScore = 0;
+    s.scoreSegmentHost = 0;
+    s.scoreSegmentGuest = 0;
     s.phase = "countdown";
     s.countdownN = 3;
     s.countdownStartedAt = Date.now();
-    s.roundStartAt = null;
-    s.roundEndReason = null;
-    s.secretWord = pickRandomWord(s.lastRoundWord);
-    s.guessesRemaining = 3;
-    s.attemptsThisRound = 0;
+    s.segmentStartedAt = null;
+    s.segmentEndsAt = null;
+    s.secretWord = "";
     s.guesserHint = null;
     broadcastToGuest();
 
@@ -289,10 +318,8 @@ export default function LipReader({
     }, 2000);
     const t3 = window.setTimeout(() => {
       const cur = gameStateRef.current;
-      cur.phase = "playing";
-      cur.roundStartAt = Date.now();
-      cur.countdownN = null;
-      broadcastToGuest();
+      cur.secretWord = pickRandomWord(null);
+      hostEnterPlayingSegment();
     }, 3000);
     scheduledTimersRef.current.push(t1, t2, t3);
   }
@@ -303,26 +330,13 @@ export default function LipReader({
     if (!s.readyLobbyHost || !s.readyLobbyGuest) return;
     s.readyLobbyHost = false;
     s.readyLobbyGuest = false;
-    scheduleCountdownFromHost({ randomizeCommunicator: true });
+    scheduleCountdownFromLobby();
   }
 
-  function hostTryAdvanceNextRound() {
-    const s = gameStateRef.current;
-    if (s.phase !== "round_result") return;
-    if (!s.readyNextHost || !s.readyNextGuest) return;
-    s.communicatorIsHost = !s.communicatorIsHost;
-    s.readyNextHost = false;
-    s.readyNextGuest = false;
-    scheduleCountdownFromHost({ randomizeCommunicator: false });
-  }
-
-  function hostApplyFullSessionRematch() {
-    const cur = gameStateRef.current;
-    if (cur.phase !== "round_result") return;
-    if (!rematchBothWant(cur.sessionRematch)) return;
-    const hn = cur.hostName;
-    const gn = cur.guestName;
-    const epoch = (cur.sessionEpoch ?? 0) + 1;
+  function hostApplyPlayAgainReset() {
+    const hn = gameStateRef.current.hostName;
+    const gn = gameStateRef.current.guestName;
+    const epoch = (gameStateRef.current.sessionEpoch ?? 0) + 1;
     clearScheduledTimers();
     gameStateRef.current = initialLipReaderState();
     gameStateRef.current.sessionEpoch = epoch;
@@ -332,12 +346,22 @@ export default function LipReader({
     broadcastToGuest();
   }
 
-  function hostTryFullSessionRematch() {
-    if (roleRef.current !== "host") return;
+  function hostTryApplyPlayAgain() {
     const s = gameStateRef.current;
-    if (s.phase !== "round_result") return;
-    if (!rematchBothWant(s.sessionRematch)) return;
-    hostApplyFullSessionRematch();
+    if (s.phase !== "session_complete") return;
+    if (!s.sessionRematch.host || !s.sessionRematch.guest) return;
+    hostApplyPlayAgainReset();
+  }
+
+  function requestPlayAgain() {
+    if (gameStateRef.current.phase !== "session_complete") return;
+    if (role === "host") {
+      gameStateRef.current.sessionRematch.host = true;
+      broadcastToGuest();
+      queueMicrotask(() => hostTryApplyPlayAgain());
+    } else if (role === "guest") {
+      sendToHost({ t: "lr_play_again", want: true });
+    }
   }
 
   function toggleLobbyReady() {
@@ -351,25 +375,10 @@ export default function LipReader({
     }
   }
 
-  function toggleNextReady() {
-    if (role === "host") {
-      gameStateRef.current.readyNextHost = !gameStateRef.current.readyNextHost;
-      broadcastToGuest();
-      hostTryAdvanceNextRound();
-    } else {
-      sendToHost({ t: "lr_ready_next", ready: !gameStateRef.current.readyNextGuest });
-    }
-  }
-
-  function requestSessionRematch() {
-    if (gameStateRef.current.phase !== "round_result") return;
-    if (role === "host") {
-      gameStateRef.current.sessionRematch.host = true;
-      broadcastToGuest();
-      hostTryFullSessionRematch();
-    } else if (role === "guest") {
-      sendToHost({ t: "lr_rematch", want: true });
-    }
+  function pressSkip() {
+    if (gameStateRef.current.phase !== "playing") return;
+    if (role === "host") hostHandleSkip();
+    else sendToHost({ t: "lr_skip" });
   }
 
   function leaveMatch() {
@@ -381,10 +390,6 @@ export default function LipReader({
     setOpponentConnected(false);
     setOpponentLeftMatch(false);
     setStatus("");
-  }
-
-  function returnToArcade() {
-    leaveMatch();
   }
 
   function submitGuess() {
@@ -426,7 +431,7 @@ export default function LipReader({
 
     peerRef.current = peer;
     setRoomId(rid);
-    setStatus("Waiting for opponent…");
+    setStatus("Waiting for teammate…");
 
     peer.on("call", (call: any) => {
       call.answer(stream);
@@ -442,7 +447,7 @@ export default function LipReader({
     dataRef.current = conn;
     setOpponentConnected(true);
     setOpponentLeftMatch(false);
-    setStatus("Opponent connected");
+    setStatus("Teammate connected");
 
     conn.on("data", (raw: unknown) => {
       const msg = raw as GuestToHostLipMsg;
@@ -454,14 +459,13 @@ export default function LipReader({
         s.readyLobbyGuest = msg.ready;
         broadcastToGuest();
         queueMicrotask(() => hostTryStartFromLobby());
-      } else if (msg.t === "lr_ready_next") {
-        s.readyNextGuest = msg.ready;
-        broadcastToGuest();
-        queueMicrotask(() => hostTryAdvanceNextRound());
-      } else if (msg.t === "lr_rematch") {
+      } else if (msg.t === "lr_skip") {
+        if (s.phase !== "playing") return;
+        hostHandleSkip();
+      } else if (msg.t === "lr_play_again") {
         s.sessionRematch.guest = msg.want;
         broadcastToGuest();
-        queueMicrotask(() => hostTryFullSessionRematch());
+        queueMicrotask(() => hostTryApplyPlayAgain());
       } else if (msg.t === "lr_guess") {
         // Guest guesses iff host is communicator (same as iAmGuesser for guest).
         const guestIsGuesser = s.communicatorIsHost === true;
@@ -507,7 +511,7 @@ export default function LipReader({
     dataRef.current = conn;
     setOpponentConnected(true);
     setOpponentLeftMatch(false);
-    setStatus("Opponent connected");
+    setStatus("Teammate connected");
 
     conn.on("data", (raw: unknown) => {
       const msg = raw as HostToGuestLipMsg;
@@ -552,7 +556,7 @@ export default function LipReader({
       setOpponentLeftMatch(false);
       setUiMenu(false);
       setMatchmaking(false);
-      setStatus("Opponent connected.");
+      setStatus("Teammate connected.");
     } catch {
       cleanup();
       setStatus("Connection failed.");
@@ -616,12 +620,11 @@ export default function LipReader({
 
   const opponentName =
     role === "host" ? gs.guestName || "" : role === "guest" ? gs.hostName || "" : "";
-  const myDisplayName =
-    role === "host"
-      ? gs.hostName || nameRef.current || "You"
-      : role === "guest"
-        ? gs.guestName || nameRef.current || "You"
-        : "You";
+
+  const playAgainMine =
+    role === "host" ? gs.sessionRematch.host : role === "guest" ? gs.sessionRematch.guest : false;
+  const playAgainTheirs =
+    role === "host" ? gs.sessionRematch.guest : role === "guest" ? gs.sessionRematch.host : false;
 
   useEffect(() => {
     const stream = localStreamRef.current;
@@ -644,12 +647,12 @@ export default function LipReader({
     return () => clearInterval(id);
   }, [gs.phase]);
 
-  const elapsedSec =
-    gs.phase === "playing" && gs.roundStartAt != null
-      ? Math.floor((Date.now() - gs.roundStartAt) / 1000)
-      : gs.phase === "round_result" && gs.lastRoundTimeMs != null
-        ? Math.floor(gs.lastRoundTimeMs / 1000)
-        : 0;
+  void tick;
+  const secondsLeft =
+    gs.phase === "playing" && gs.segmentEndsAt != null
+      ? Math.max(0, Math.ceil((gs.segmentEndsAt - Date.now()) / 1000))
+      : 0;
+  const timerUrgent = gs.phase === "playing" && secondsLeft > 0 && secondsLeft <= 10;
 
   const showWordToMe =
     iAmCommunicator &&
@@ -664,9 +667,6 @@ export default function LipReader({
       : gs.readyLobbyGuest
         ? "Ready ✓"
         : "Ready";
-
-  const nextReadyLabel =
-    role === "host" ? (gs.readyNextHost ? "Next Round ✓" : "Next Round") : gs.readyNextGuest ? "Next Round ✓" : "Next Round";
 
   useEffect(() => {
     if (role === "host" && gs.phase === "lobby") {
@@ -695,7 +695,7 @@ export default function LipReader({
 
   const opponentHudDisplay =
     matchmaking && !opponentConnected
-      ? "Finding match"
+      ? "Finding teammate"
       : opponentName.trim()
         ? opponentName.trim()
         : "Connecting";
@@ -707,7 +707,7 @@ export default function LipReader({
       <div className={gp.surfaceVignette} aria-hidden />
       {showDuelHud ? (
         <GameplayDuelHud
-          gameBadge="Charades"
+          gameBadge="Co-op Charades"
           opponent={{
             displayName: opponentHudDisplay,
             username: opponentHudUsername,
@@ -729,17 +729,29 @@ export default function LipReader({
                 <div className={gp.countdownGlyph}>{gs.countdownN}</div>
               </div>
             ) : null}
+            {gs.phase === "role_swap" ? (
+              <div className={gp.countdownCurtain} aria-live="assertive">
+                <div className={styles.swapTitle}>Swap roles</div>
+              </div>
+            ) : null}
             <div className={`${gp.surfacePane} ${gp.surfacePaneOpponent}`}>
               <video ref={remoteVideoRef} className={gp.surfaceFeed} playsInline autoPlay />
             </div>
             {!uiMenu && !matchmaking && opponentConnected && (gs.phase === "playing" || gs.phase === "countdown") ? (
               <div className={gp.surfaceCenterHud} aria-live="polite">
-                {gs.phase === "countdown" ? <span className={gp.surfaceCenterMuted}>Round starting</span> : null}
+                {gs.phase === "countdown" ? <span className={gp.surfaceCenterMuted}>Team round starting</span> : null}
                 {gs.phase === "playing" ? (
                   <>
-                    <span className={gp.surfaceCenterMuted}>{iAmCommunicator ? "You act" : "You guess"}</span>
-                    <span className={gp.surfaceCenterTimer}>{elapsedSec}s</span>
-                    <span className={gp.surfaceCenterMuted}>{gs.guessesRemaining} left</span>
+                    <span className={gp.surfaceCenterMuted}>Score: {gs.teamScore}</span>
+                    <span
+                      className={`${gp.surfaceCenterTimer} ${timerUrgent ? styles.timerUrgent : ""}`}
+                      style={timerUrgent ? { fontSize: "clamp(26px, 8vw, 34px)" } : undefined}
+                    >
+                      {secondsLeft}s
+                    </span>
+                    <span className={gp.surfaceCenterMuted}>
+                      {gs.segmentIndex === 1 ? "Round 1" : "Round 2"} · {iAmCommunicator ? "You clue" : "You guess"}
+                    </span>
                   </>
                 ) : null}
               </div>
@@ -757,35 +769,58 @@ export default function LipReader({
 
           {!uiMenu && !matchmaking && opponentConnected && gs.phase === "playing" ? (
             <div className={gp.hintFloat}>
-              {iAmCommunicator ? "Mic off while acting — go big." : "Their mic is off — read their lips."}
+              {iAmCommunicator ? "Mic off while you clue — go big." : "Their mic is off while they clue — read their lips."}
               {gs.guesserHint && iAmGuesser ? <span className={styles.hintNope}> {gs.guesserHint}</span> : null}
             </div>
           ) : null}
 
-          {!uiMenu && !matchmaking && opponentConnected && gs.phase === "round_result" ? (
+          {!uiMenu && !matchmaking && opponentConnected && gs.phase === "session_complete" ? (
             <div className={gp.resultStrip}>
-              <div className={gp.resultKicker}>Round</div>
-              <div className={gp.resultTitle}>
-                {gs.roundEndReason === "correct"
-                  ? "Nailed it"
-                  : gs.roundEndReason === "out_of_guesses"
-                    ? "Out of guesses"
-                    : "Time"}
-              </div>
+              <div className={gp.resultKicker}>Team run</div>
+              <div className={gp.resultTitle}>TEAM SCORE: {gs.teamScore}</div>
               <div className={gp.resultDetail}>
-                <strong>{gs.lastRoundWord}</strong> · {((gs.lastRoundTimeMs ?? 0) / 1000).toFixed(1)}s ·{" "}
-                {gs.lastRoundAttempts} tries
+                Words correct: {gs.teamScore}
+                <br />
+                {(gs.hostName || "Host") + " (round 1)"}: {gs.scoreSegmentHost}
+                <br />
+                {(gs.guestName || "Guest") + " (round 2)"}: {gs.scoreSegmentGuest}
               </div>
-              <div className={gp.resultDetail}>Both tap next round to continue</div>
-              <RematchBar
-                iWantRematch={role === "host" ? gs.sessionRematch.host : role === "guest" ? gs.sessionRematch.guest : false}
-                theyWantRematch={role === "host" ? gs.sessionRematch.guest : role === "guest" ? gs.sessionRematch.host : false}
-                onRematch={requestSessionRematch}
-                onLeave={leaveMatch}
-                opponentLeft={opponentLeftMatch}
-                onReturnArcade={returnToArcade}
-                onGoHome={() => router.push("/")}
-              />
+              {opponentLeftMatch ? (
+                <div className={gp.resultDetail}>Teammate disconnected.</div>
+              ) : (
+                <div className={gp.resultDetail}>
+                  {playAgainMine && !playAgainTheirs
+                    ? "Waiting for teammate…"
+                    : !playAgainMine && playAgainTheirs
+                      ? "They're ready — tap PLAY AGAIN."
+                      : "Both tap PLAY AGAIN to run it back."}
+                </div>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center", marginTop: "12px" }}>
+                <button
+                  type="button"
+                  className={gp.surfacePill}
+                  disabled={
+                    opponentLeftMatch ||
+                    (role === "host" ? gs.sessionRematch.host : role === "guest" ? gs.sessionRematch.guest : false)
+                  }
+                  onClick={() => requestPlayAgain()}
+                >
+                  {role === "host"
+                    ? gs.sessionRematch.host
+                      ? "Play again ✓"
+                      : "Play again"
+                    : gs.sessionRematch.guest
+                      ? "Play again ✓"
+                      : "Play again"}
+                </button>
+                <button type="button" className={gp.surfacePillGhost} onClick={() => router.push("/")}>
+                  Go home
+                </button>
+                <button type="button" className={gp.surfacePillGhost} onClick={leaveMatch}>
+                  Leave match
+                </button>
+              </div>
             </div>
           ) : null}
 
@@ -796,18 +831,20 @@ export default function LipReader({
                   <button type="button" className={gp.surfacePillGhost} onClick={toggleLobbyReady}>
                     {lobbyReadyLabel}
                   </button>
-                  <span className={gp.dockCaption}>Round begins when both players are ready.</span>
+                  <span className={gp.dockCaption}>Match begins when both teammates are ready.</span>
                 </>
               ) : null}
-              {gs.phase === "round_result" ? (
-                <button type="button" className={gp.surfacePill} onClick={toggleNextReady}>
-                  {nextReadyLabel}
-                </button>
-              ) : null}
-              {gs.phase === "playing" && iAmGuesser ? (
-                <button type="button" className={gp.surfacePill} onClick={() => setGuessModalOpen(true)}>
-                  I know it
-                </button>
+              {gs.phase === "playing" ? (
+                <>
+                  {iAmGuesser ? (
+                    <button type="button" className={gp.surfacePill} onClick={() => setGuessModalOpen(true)}>
+                      Guess
+                    </button>
+                  ) : null}
+                  <button type="button" className={gp.surfacePillGhost} onClick={() => pressSkip()}>
+                    Skip word
+                  </button>
+                </>
               ) : null}
             </div>
           ) : null}
@@ -820,11 +857,9 @@ export default function LipReader({
           <div>phase {gs.phase}</div>
           <div>commHost {String(gs.communicatorIsHost)}</div>
           <div>role {role ?? "—"}</div>
-          <div>guessLeft {gs.guessesRemaining}</div>
+          <div>seg {gs.segmentIndex}</div>
           <div>word {role === "host" ? gs.secretWord || "—" : gs.secretWord ? "[synced]" : "[hidden]"}</div>
-          <div>
-            roundOver {String(gs.phase === "round_result")} {gs.roundEndReason ?? "—"}
-          </div>
+          <div>sessionDone {String(gs.phase === "session_complete")}</div>
         </div>
       ) : null}
 
@@ -888,7 +923,7 @@ export default function LipReader({
             </div>
             {micOk === false ? (
               <div className={gp.resultDetail} style={{ marginTop: "10px", textAlign: "center" }}>
-                Enable the microphone so your opponent can hear guesses.
+                Enable the microphone so your teammate can hear guesses.
               </div>
             ) : null}
           </div>

@@ -1,4 +1,4 @@
-/** Lip Reader — separate from FacePong peerRoom types. Host-authoritative game state. */
+/** Lip Reader / Charades — host-authoritative co-op state (same team, two 60s clue segments). */
 
 export const LIP_READER_WORD_DECK = [
   "Pizza",
@@ -28,41 +28,44 @@ export const LIP_READER_WORD_DECK = [
   "Drake",
 ] as const;
 
-export type LipReaderPhase = "lobby" | "countdown" | "playing" | "round_result";
+export type LipReaderPhase = "lobby" | "countdown" | "playing" | "role_swap" | "session_complete";
 
 export type LipReaderNetState = {
   phase: LipReaderPhase;
-  /** Bump on full-session rematch from round_result. */
+  /** Bump when returning to lobby from session complete. */
   sessionEpoch: number;
+  /** Both true → host resets session to lobby (PLAY AGAIN). */
   sessionRematch: { host: boolean; guest: boolean };
-  /** Monotonic per round (incremented when entering countdown); stale guess messages ignored. */
+  /** Monotonic per playing segment (incremented when entering countdown or after role swap). */
   roundId: number;
   hostName: string;
   guestName: string;
-  /** True = host is communicator this round; false = guest is communicator. */
+  /** Segment 1: host clues. Segment 2: guest clues. */
   communicatorIsHost: boolean;
+  /** 1 = first 60s, 2 = second after swap. */
+  segmentIndex: 1 | 2;
   /** Authoritative word (host only in memory; stripped over wire for guesser). */
   secretWord: string;
-  roundStartAt: number | null;
-  /** Epoch ms when countdown began (optional UI). */
+  /** Wall ms when current playing segment began. */
+  segmentStartedAt: number | null;
+  /** Wall ms when current segment ends (host clock). */
+  segmentEndsAt: number | null;
   countdownStartedAt: number | null;
-  /** 3, 2, 1 — shown during countdown; null when not counting. */
+  /** 3, 2, 1 before segment 1 only. */
   countdownN: number | null;
-  guessesRemaining: number;
-  /** Increments on each guess attempt during the round (synced). */
-  attemptsThisRound: number;
-  /** Set when round ends (correct or out of guesses). */
-  roundDurationMs: number | null;
-  roundEndReason: "correct" | "out_of_guesses" | null;
-  /** Shown on result screen to both players. */
-  lastRoundWord: string | null;
-  lastRoundTimeMs: number | null;
-  lastRoundAttempts: number;
+  /**
+   * V1 scoring: one run = two 60s segments, combined `teamScore`.
+   * For future leaderboards / weekly highs, persist: `sessionEpoch`, names, `teamScore`,
+   * `scoreSegmentHost`, `scoreSegmentGuest`, and wall-clock session end (host-derived).
+   */
+  teamScore: number;
+  /** Points earned while host was clueing (segment 1). */
+  scoreSegmentHost: number;
+  /** Points earned while guest was clueing (segment 2). */
+  scoreSegmentGuest: number;
   readyLobbyHost: boolean;
   readyLobbyGuest: boolean;
-  readyNextHost: boolean;
-  readyNextGuest: boolean;
-  /** Ephemeral UI line for guesser after wrong guess (safe — no secret). */
+  /** Short wrong-guess hint (cleared quickly). */
   guesserHint: string | null;
 };
 
@@ -70,8 +73,8 @@ export type GuestToHostLipMsg =
   | { t: "lr_name"; name: string }
   | { t: "lr_ready_lobby"; ready: boolean }
   | { t: "lr_guess"; text: string; roundId: number }
-  | { t: "lr_ready_next"; ready: boolean }
-  | { t: "lr_rematch"; want: boolean };
+  | { t: "lr_skip" }
+  | { t: "lr_play_again"; want: boolean };
 
 export type HostToGuestLipMsg = {
   t: "lr_state";
@@ -89,21 +92,17 @@ export function initialLipReaderState(): LipReaderNetState {
     hostName: "",
     guestName: "",
     communicatorIsHost: true,
+    segmentIndex: 1,
     secretWord: "",
-    roundStartAt: null,
+    segmentStartedAt: null,
+    segmentEndsAt: null,
     countdownStartedAt: null,
     countdownN: null,
-    guessesRemaining: 3,
-    attemptsThisRound: 0,
-    roundDurationMs: null,
-    roundEndReason: null,
-    lastRoundWord: null,
-    lastRoundTimeMs: null,
-    lastRoundAttempts: 0,
+    teamScore: 0,
+    scoreSegmentHost: 0,
+    scoreSegmentGuest: 0,
     readyLobbyHost: false,
     readyLobbyGuest: false,
-    readyNextHost: false,
-    readyNextGuest: false,
     guesserHint: null,
   };
 }
@@ -118,21 +117,17 @@ export function cloneLipReaderState(s: LipReaderNetState): LipReaderNetState {
     hostName: s.hostName,
     guestName: s.guestName,
     communicatorIsHost: s.communicatorIsHost,
+    segmentIndex: s.segmentIndex === 2 ? 2 : 1,
     secretWord: s.secretWord,
-    roundStartAt: s.roundStartAt,
+    segmentStartedAt: s.segmentStartedAt,
+    segmentEndsAt: s.segmentEndsAt,
     countdownStartedAt: s.countdownStartedAt,
     countdownN: s.countdownN,
-    guessesRemaining: s.guessesRemaining,
-    attemptsThisRound: s.attemptsThisRound,
-    roundDurationMs: s.roundDurationMs,
-    roundEndReason: s.roundEndReason,
-    lastRoundWord: s.lastRoundWord,
-    lastRoundTimeMs: s.lastRoundTimeMs,
-    lastRoundAttempts: s.lastRoundAttempts,
+    teamScore: s.teamScore,
+    scoreSegmentHost: s.scoreSegmentHost,
+    scoreSegmentGuest: s.scoreSegmentGuest,
     readyLobbyHost: s.readyLobbyHost,
     readyLobbyGuest: s.readyLobbyGuest,
-    readyNextHost: s.readyNextHost,
-    readyNextGuest: s.readyNextGuest,
     guesserHint: s.guesserHint,
   };
 }
@@ -140,7 +135,7 @@ export function cloneLipReaderState(s: LipReaderNetState): LipReaderNetState {
 /**
  * Strip secret word for guest packets:
  * - guesser never receives the word during a round
- * - communicator only receives it once `phase === "playing"` (not during countdown)
+ * - communicator only receives it once `phase === "playing"` (not during countdown / role_swap)
  */
 export function redactLipStateForGuest(state: LipReaderNetState): LipReaderNetState {
   const guestIsCommunicator = !state.communicatorIsHost;
