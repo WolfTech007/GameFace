@@ -2,6 +2,7 @@ import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
 import { Bebas_Neue, Inter, Orbitron, Outfit } from "next/font/google";
+import { RouteProtection } from "@/components/auth/RouteProtection";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { GameFaceProfileProvider } from "@/contexts/GameFaceProfileContext";
 
@@ -54,7 +55,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable} ${outfit.variable} ${bebasNeue.variable} ${orbitron.variable}`}>
       <body className={inter.className}>
         <AuthProvider>
-          <GameFaceProfileProvider>{children}</GameFaceProfileProvider>
+          <RouteProtection>
+            <GameFaceProfileProvider>{children}</GameFaceProfileProvider>
+          </RouteProtection>
         </AuthProvider>
       </body>
     </html>
