@@ -2,11 +2,20 @@
   position: relative;
   min-height: 100svh;
   max-height: 100svh;
+  height: 100svh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   background: #020204;
   color: rgba(255, 255, 255, 0.96);
+}
+
+.playerHudWrap {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 12px 6px;
 }
 
 .main {
@@ -17,24 +26,29 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  padding: 0 10px max(8px, env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
 }
 
 .stageFrame {
   position: relative;
-  width: min(100vw, calc(100svh * 9 / 16));
-  height: min(100svh, calc(100vw * 16 / 9));
-  max-width: 100vw;
-  max-height: 100svh;
-  flex-shrink: 0;
-  margin: 0 auto;
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  container-type: size;
+  container-name: stackup-arena;
 }
 
 .stage {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  position: relative;
+  flex-shrink: 0;
   overflow: hidden;
   border: 2px solid rgba(56, 189, 248, 0.72);
   border-radius: 4px;
@@ -43,6 +57,17 @@
     inset 0 0 80px rgba(56, 189, 248, 0.08),
     0 0 38px rgba(56, 189, 248, 0.2);
   touch-action: none;
+  width: min(100cqw, calc(100cqh * 9 / 16));
+  height: min(100cqh, calc(100cqw * 16 / 9));
+  max-width: 100%;
+  max-height: 100%;
+}
+
+@supports not (container-type: size) {
+  .stage {
+    width: min(100vw - 20px, calc((100svh - 76px) * 9 / 16));
+    height: min(calc(100vw - 20px) * 16 / 9, calc(100svh - 76px));
+  }
 }
 
 .remoteShell {
@@ -140,18 +165,13 @@
   background: linear-gradient(to bottom, rgba(2, 6, 14, 0.55), rgba(2, 6, 14, 0.12));
 }
 
-.frameHudSide {
-  flex: 0 1 30%;
+.frameHudScore {
+  flex: 0 1 28%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
   min-width: 0;
-}
-
-.frameHudSideYou {
-  align-items: flex-end;
-  text-align: right;
 }
 
 .frameHudLabel {
@@ -172,7 +192,8 @@
 }
 
 .frameHudCenter {
-  flex: 0 1 40%;
+  flex: 1 1 auto;
+  min-width: 0;
   text-align: center;
   font-size: 9px;
   font-weight: 850;
@@ -190,6 +211,11 @@
   text-shadow:
     0 0 12px rgba(251, 113, 133, 0.4),
     0 1px 8px rgba(0, 0, 0, 0.95);
+}
+
+.frameHudSpacer {
+  flex: 0 1 28%;
+  min-width: 0;
 }
 
 .pip {

@@ -29,6 +29,7 @@ import {
   hostApplyStop,
   hostTickTransitions,
   hostUpdateCamera,
+  integrateMovingMcnSnapshot,
   resetStackUpRuntime,
   type StackUpHostRuntime,
 } from "@/lib/stackUp/hostSim";
@@ -199,6 +200,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const netRef = useRef<StackUpNetState>(cloneStackUpState(createStackUpHostRuntime().state));
   const hostSeqRef = useRef(0);
   const lastGuestSeqRef = useRef(-1);
+  const lastGuestStateSentAtRef = useRef(0);
   const lastPlayBroadcastMsRef = useRef(0);
   const lastBrickEpochStoppedRef = useRef(-1);
   const lastSeenBrickEpochRef = useRef(-1);
@@ -431,16 +433,16 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     const video = localVideoRef.current;
     const lm = landmarkerRef.current;
     if (!video || !lm || video.readyState < 2) return;
-    const res = lm.detectForVideo(video, ts);
-    const pts = res.faceLandmarks?.[0] as NormalizedLandmark[] | undefined;
-    const ear = combinedEar(pts);
-    const det = blinkDetRef.current;
-    if (!det) return;
     const gs = getDrawState();
     if (gs.phase !== "moving") return;
     const iAmBlue = roleRef.current === "host";
     const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
     if (!myTurn) return;
+    const res = lm.detectForVideo(video, ts);
+    const pts = res.faceLandmarks?.[0] as NormalizedLandmark[] | undefined;
+    const ear = combinedEar(pts);
+    const det = blinkDetRef.current;
+    if (!det) return;
     if (det.tick(ear, ts)) {
       hideHintUntilRef.current = performance.now() + 1200;
       if (roleRef.current === "host") hostHandleLocalStop();
@@ -529,6 +531,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   async function connectAsGuest(rid: string) {
     cleanup();
     lastGuestSeqRef.current = -1;
+    lastGuestStateSentAtRef.current = performance.now();
     setStatus("Joining…");
     setRole("guest");
     setOpponentConnected(false);
@@ -547,6 +550,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       if (msg.t !== "state") return;
       if (msg.seq <= lastGuestSeqRef.current) return;
       lastGuestSeqRef.current = msg.seq;
+      lastGuestStateSentAtRef.current = msg.sentAt;
       const authoritative = cloneStackUpState(msg.state);
       netRef.current = authoritative;
       guestBrickEpochRef.current = authoritative.brickEpoch;
@@ -714,7 +718,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
           if (phaseBeforeTick === "lobby") {
             lastPlayBroadcastMsRef.current = now;
             broadcastAuthoritativeState();
-          } else if (now - lastPlayBroadcastMsRef.current >= 33) {
+          } else if (now - lastPlayBroadcastMsRef.current >= 16) {
             lastPlayBroadcastMsRef.current = now;
             broadcastAuthoritativeState();
           }
@@ -730,7 +734,15 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
       if (!canvas || !ctx) return;
       const ds = getDrawState();
-      drawScene(ctx, w, h, ds);
+      const arenaWDraw = Math.max(1, w * 0.88);
+      let toDraw = ds;
+      if (roleRef.current === "guest" && ds.phase === "moving") {
+        const elapsedSec = Math.max(0, Math.min(0.12, (performance.now() - lastGuestStateSentAtRef.current) / 1000));
+        const blend = cloneStackUpState(ds);
+        blend.mcn = integrateMovingMcnSnapshot(ds, arenaWDraw, elapsedSec);
+        toDraw = blend;
+      }
+      drawScene(ctx, w, h, toDraw);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -818,10 +830,11 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     <div className={styles.shell}>
       <video ref={localVideoRef} className={styles.hidden} playsInline muted autoPlay />
 
-      <GameplayDuelHud
-        gameBadge="STACK UP"
-        hideCenterBadge
-        opponent={{
+      <div className={styles.playerHudWrap}>
+        <GameplayDuelHud
+          gameBadge="STACK UP"
+          hideCenterBadge
+          opponent={{
           displayName: showMatchmaking ? "Finding match" : opponentConnected ? "Opponent" : "Arena",
           username: showMatchmaking ? "" : opponentConnected ? "rival" : "",
           online: opponentConnected || showMatchmaking,
@@ -831,7 +844,8 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
           username: hudPlainUsername(profile.username),
           online: true,
         }}
-      />
+        />
+      </div>
 
       <main className={styles.main}>
         {showArena ? (
@@ -860,8 +874,8 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
               {showFrameHud ? (
                 <div className={styles.frameHud} aria-hidden>
-                  <div className={styles.frameHudSide}>
-                    <span className={styles.frameHudLabel}>OPP</span>
+                  <div className={styles.frameHudScore}>
+                    <span className={styles.frameHudLabel}>SCORE</span>
                     <span className={styles.frameHudValue}>{sharedScore}</span>
                   </div>
                   <div
@@ -871,10 +885,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
                   >
                     {frameHudCenter}
                   </div>
-                  <div className={`${styles.frameHudSide} ${styles.frameHudSideYou}`}>
-                    <span className={styles.frameHudLabel}>YOU</span>
-                    <span className={styles.frameHudValue}>{sharedScore}</span>
-                  </div>
+                  <div className={styles.frameHudSpacer} />
                 </div>
               ) : null}
 

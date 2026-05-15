@@ -5,7 +5,7 @@ import type { StackUpNetState, StackUpOwner } from "./netTypes";
 
 const BASE_WN = 0.7;
 const COUNTDOWN_TOTAL_MS = 3200;
-const SPEED_MULT = 1.65;
+const SPEED_MULT = 2.05;
 
 export type StackUpHostRuntime = {
   state: StackUpNetState;
@@ -93,21 +93,56 @@ export function hostTickTransitions(rt: StackUpHostRuntime, now: number) {
   }
 }
 
-export function hostAdvanceMoving(s: StackUpNetState, dt: number, arenaW: number) {
-  if (s.phase !== "moving") return;
-  const wn = s.mwn;
+function stepHorizontalMotion(
+  mcn: number,
+  vx: StackUpNetState["vx"],
+  wn: number,
+  arenaW: number,
+  speedPx: number,
+  dt: number,
+): { mcn: number; vx: StackUpNetState["vx"] } {
   const half = wn / 2;
-  const deltaN = (s.speedPx / arenaW) * dt;
-  let next = s.mcn + s.vx * deltaN;
+  const deltaN = (speedPx / arenaW) * dt;
+  let next = mcn + vx * deltaN;
+  let nvx = vx;
   if (next <= half) {
     next = half;
-    s.vx = 1;
+    nvx = 1;
   } else if (next >= 1 - half) {
     next = 1 - half;
-    s.vx = -1;
+    nvx = -1;
   }
-  s.mcn = next;
+  return { mcn: next, vx: nvx };
+}
+
+export function hostAdvanceMoving(s: StackUpNetState, dt: number, arenaW: number) {
+  if (s.phase !== "moving") return;
+  const o = stepHorizontalMotion(s.mcn, s.vx, s.mwn, arenaW, s.speedPx, dt);
+  s.mcn = o.mcn;
+  s.vx = o.vx;
   s.pulse = (s.pulse + dt * 4.5) % 6.28318;
+}
+
+/** Guest-side: advance `mcn` from last authoritative snapshot (matches host bounce math). */
+export function integrateMovingMcnSnapshot(
+  s: Pick<StackUpNetState, "phase" | "mcn" | "vx" | "mwn" | "speedPx">,
+  arenaW: number,
+  elapsedSec: number,
+): number {
+  if (s.phase !== "moving" || elapsedSec <= 0) return s.mcn;
+  let mcn = s.mcn;
+  let vx = s.vx;
+  const { mwn: wn, speedPx } = s;
+  let rem = Math.min(0.12, elapsedSec);
+  const step = 1 / 360;
+  while (rem > 1e-7) {
+    const dt = Math.min(step, rem);
+    const o = stepHorizontalMotion(mcn, vx, wn, arenaW, speedPx, dt);
+    mcn = o.mcn;
+    vx = o.vx;
+    rem -= dt;
+  }
+  return mcn;
 }
 
 export function hostUpdateCamera(s: StackUpNetState, dt: number, canvasH: number, reduceMotion: boolean) {
@@ -158,7 +193,7 @@ export function hostApplyStop(rt: StackUpHostRuntime, now: number): { miss: bool
   const perfect = Math.abs(overlapLen - s.mwn) / Math.max(0.001, s.mwn) < 0.03;
   s.mwn = overlapLen;
   s.mcn = overlapLeft + overlapLen / 2;
-  s.speedPx = Math.min(SPEED_MAX_PX * 1.25, (SPEED_BASE_PX + SPEED_PER_LEVEL_PX * (s.tower.length - 1)) * SPEED_MULT);
+  s.speedPx = Math.min(SPEED_MAX_PX * 1.38, (SPEED_BASE_PX + SPEED_PER_LEVEL_PX * (s.tower.length - 1)) * SPEED_MULT);
   s.activeBlue = !s.activeBlue;
   s.level = s.tower.length;
   s.phase = "moving";
