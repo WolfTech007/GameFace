@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { GFButton, GFBottomNav } from "@/components/gameface";
 import { loadFriendRequests, loadFriends, type FriendEntry } from "@/lib/gameface/socialStore";
 import styles from "./page.module.css";
 
 export default function FriendsPage() {
+  const router = useRouter();
   const [friends, setFriends] = useState<FriendEntry[]>(() => loadFriends());
   const requests = useMemo(() => loadFriendRequests(), []);
   const [query, setQuery] = useState("");
@@ -53,7 +55,12 @@ export default function FriendsPage() {
                 {f.currentGame ? <div className={styles.game}>In {f.currentGame}</div> : null}
               </div>
               <div className={styles.actions}>
-                <GFButton variant="primary" type="button" disabled title="Coming soon">
+                <GFButton
+                  variant="primary"
+                  type="button"
+                  title="Pick a game on the home screen, open Play, then tap Challenge Friend"
+                  onClick={() => router.push("/")}
+                >
                   Challenge
                 </GFButton>
                 <GFButton variant="ghost" type="button" disabled title="Coming soon">

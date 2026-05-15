@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { GFButton } from "@/components/gameface";
 import styles from "./page.module.css";
 
 export function HomeTop() {
+  const router = useRouter();
   const { profile } = useGameFaceProfile();
   const { user, isLoading, signOut } = useAuth();
   const xp = profile.xp ?? 120;
@@ -38,7 +40,13 @@ export function HomeTop() {
         </Link>
         <div className={styles.homeTopRight}>
           <span className={styles.homeFriendsOnline}>3 friends online</span>
-          <GFButton variant="ghost" className={styles.homeChallengeBtn} disabled title="Coming soon">
+          <GFButton
+            variant="ghost"
+            className={styles.homeChallengeBtn}
+            type="button"
+            title="Open Friends — then pick a game from home and use Challenge Friend on its intro"
+            onClick={() => router.push("/friends")}
+          >
             Challenge
           </GFButton>
           {isLoading ? (

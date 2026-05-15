@@ -113,6 +113,15 @@ export async function resolvePrivateInviteCode(
   return parsed;
 }
 
+function challengeErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "object" && e !== null && "message" in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return String(e);
+}
+
 export async function startPrivateFriendChallenge(
   router: { push: (href: string) => void },
   introSlug: GameIntroSlug,
@@ -126,7 +135,7 @@ export async function startPrivateFriendChallenge(
     const { inviteCode, playPath } = await createPrivateRoomAsHost(slug);
     router.push(`${playPath}?privateInvite=${encodeURIComponent(inviteCode)}`);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
+    const msg = challengeErrorMessage(e);
     if (msg === "sign_in_required") {
       const path =
         typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : "/";
@@ -134,5 +143,12 @@ export async function startPrivateFriendChallenge(
       return;
     }
     console.error(e);
+    const hint =
+      msg.includes("NEXT_PUBLIC_SUPABASE") || msg.includes("Missing NEXT_PUBLIC")
+        ? "Private matches need Supabase keys in .env.local (NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY)."
+        : /relation|does not exist|schema cache/i.test(msg)
+          ? "Private match tables are missing — run the Supabase migration that creates private_rooms and join_private_room."
+          : `Could not create a private room: ${msg}`;
+    window.alert(hint);
   }
 }
