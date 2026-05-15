@@ -37,7 +37,14 @@ export default function SignupPage() {
 
     setPending(true);
     try {
-      const supabase = getSupabaseBrowserClient();
+      let supabase;
+      try {
+        supabase = getSupabaseBrowserClient();
+      } catch {
+        setError("Missing Supabase configuration. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+        return;
+      }
+
       const origin = typeof window !== "undefined" ? window.location.origin : undefined;
       const { data, error: signErr } = await supabase.auth.signUp({
         email: em,
@@ -59,6 +66,8 @@ export default function SignupPage() {
 
       router.replace("/signup/username");
       router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
     } finally {
       setPending(false);
     }

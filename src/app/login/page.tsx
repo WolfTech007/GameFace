@@ -28,7 +28,14 @@ function LoginFields() {
 
     setPending(true);
     try {
-      const supabase = getSupabaseBrowserClient();
+      let supabase;
+      try {
+        supabase = getSupabaseBrowserClient();
+      } catch {
+        setError("Missing Supabase configuration. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+        return;
+      }
+
       const { data, error: signErr } = await supabase.auth.signInWithPassword({
         email: em,
         password,
@@ -59,6 +66,8 @@ function LoginFields() {
 
       router.replace(redirectSafe);
       router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed. Try again.");
     } finally {
       setPending(false);
     }
@@ -105,12 +114,12 @@ function LoginFields() {
         </button>
       </form>
 
-      <p className={styles.linksRow}>
+      <div className={styles.linksRow}>
         New here?{" "}
-        <Link href="/signup" className={styles.inlineLink}>
+        <button type="button" className={styles.inlineLinkGhost} onClick={() => router.push("/signup")}>
           Create account
-        </Link>
-      </p>
+        </button>
+      </div>
 
       <Link href="/" className={styles.skip}>
         Back to home
