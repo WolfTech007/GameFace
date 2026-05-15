@@ -25,30 +25,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
     let alive = true;
+    try {
+      const supabase = getSupabaseBrowserClient();
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!alive) return;
-      setSession(data.session ?? null);
+      supabase.auth.getSession().then(({ data }) => {
+        if (!alive) return;
+        setSession(data.session ?? null);
+        setIsLoading(false);
+      });
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_evt, sess) => {
+        setSession(sess ?? null);
+      });
+
+      return () => {
+        alive = false;
+        subscription.unsubscribe();
+      };
+    } catch {
+      if (process.env.NODE_ENV === "development") {
+        console.error(
+          "Supabase env missing or invalid — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local",
+        );
+      }
       setIsLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_evt, sess) => {
-      setSession(sess ?? null);
-    });
-
-    return () => {
-      alive = false;
-      subscription.unsubscribe();
-    };
+      return () => {
+        alive = false;
+      };
+    }
   }, []);
 
   const signOut = useCallback(async () => {
-    const supabase = getSupabaseBrowserClient();
-    await supabase.auth.signOut();
+    try {
+      const supabase = getSupabaseBrowserClient();
+      await supabase.auth.signOut();
+    } catch {
+      /* no-op if Supabase unavailable */
+    }
   }, []);
 
   const user = session?.user ?? null;

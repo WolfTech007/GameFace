@@ -53,78 +53,90 @@ export function GameFaceProfileProvider({ children }: { children: React.ReactNod
   }, []);
 
   useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
     let alive = true;
 
-    async function applySessionUser(userId: string | null) {
-      if (!alive || typeof window === "undefined") return;
+    try {
+      const supabase = getSupabaseBrowserClient();
 
-      if (!userId) {
-        localStorage.removeItem(PROFILE_KEY);
-        const guest = ensureProfile();
-        seedDemoFriends(guest);
-        seedDemoActivity();
-        setState(guest);
-        return;
-      }
+      async function applySessionUser(userId: string | null) {
+        if (!alive || typeof window === "undefined") return;
 
-      const { data: row, error } = await supabase
-        .from("profiles")
-        .select("username, display_name, avatar_url")
-        .eq("id", userId)
-        .maybeSingle();
+        if (!userId) {
+          localStorage.removeItem(PROFILE_KEY);
+          const guest = ensureProfile();
+          seedDemoFriends(guest);
+          seedDemoActivity();
+          setState(guest);
+          return;
+        }
 
-      if (!alive) return;
+        const { data: row, error } = await supabase
+          .from("profiles")
+          .select("username, display_name, avatar_url")
+          .eq("id", userId)
+          .maybeSingle();
 
-      if (error || !row) {
-        updateProfile({ userId });
+        if (!alive) return;
+
+        if (error || !row) {
+          updateProfile({ userId });
+          const refreshed = loadProfile();
+          if (refreshed) setState(refreshed);
+          return;
+        }
+
+        const uname = typeof row.username === "string" ? row.username : null;
+        if (uname?.length) {
+          const dn =
+            typeof row.display_name === "string" && row.display_name.trim().length
+              ? row.display_name
+              : uname;
+          const av =
+            typeof row.avatar_url === "string" && row.avatar_url.trim().length
+              ? row.avatar_url
+              : undefined;
+          updateProfile({
+            userId,
+            username: uname,
+            displayName: dn,
+            avatarUrl: av,
+          });
+        } else {
+          updateProfile({ userId });
+        }
+
         const refreshed = loadProfile();
-        if (refreshed) setState(refreshed);
-        return;
+        if (!refreshed) return;
+        seedDemoFriends(refreshed);
+        seedDemoActivity();
+        setState(refreshed);
       }
 
-      const uname = typeof row.username === "string" ? row.username : null;
-      if (uname?.length) {
-        const dn =
-          typeof row.display_name === "string" && row.display_name.trim().length
-            ? row.display_name
-            : uname;
-        const av =
-          typeof row.avatar_url === "string" && row.avatar_url.trim().length
-            ? row.avatar_url
-            : undefined;
-        updateProfile({
-          userId,
-          username: uname,
-          displayName: dn,
-          avatarUrl: av,
-        });
-      } else {
-        updateProfile({ userId });
-      }
+      supabase.auth.getSession().then(({ data }) => {
+        if (!alive) return;
+        void applySessionUser(data.session?.user?.id ?? null);
+      });
 
-      const refreshed = loadProfile();
-      if (!refreshed) return;
-      seedDemoFriends(refreshed);
-      seedDemoActivity();
-      setState(refreshed);
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_evt, session) => {
+        void applySessionUser(session?.user?.id ?? null);
+      });
+
+      return () => {
+        alive = false;
+        subscription.unsubscribe();
+      };
+    } catch {
+      if (process.env.NODE_ENV === "development") {
+        console.error(
+          "Supabase env missing — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local",
+        );
+      }
+      return () => {
+        alive = false;
+      };
     }
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (!alive) return;
-      void applySessionUser(data.session?.user?.id ?? null);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_evt, session) => {
-      void applySessionUser(session?.user?.id ?? null);
-    });
-
-    return () => {
-      alive = false;
-      subscription.unsubscribe();
-    };
   }, []);
 
   const refresh = useCallback(() => {
