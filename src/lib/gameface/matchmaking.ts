@@ -1,6 +1,6 @@
 /** Weighted pool for universal random match (server + client labels must stay in sync). */
 
-export type RandomGameId = "charades" | "staring" | "facepong" | "facecard" | "blinkstackerduel";
+export type RandomGameId = "charades" | "staring" | "facepong" | "facecard";
 
 export type RandomGameMeta = {
   id: RandomGameId;

@@ -4,7 +4,6 @@ export type GameIntroSlug =
   | "staring-contest"
   | "facepong"
   | "facecard"
-  | "blink-stacker-duel"
   | "stack-up";
 
 export type GameIntroAccent = "charades" | "staring" | "facepong" | "facecard" | "blinkstackerduel";
@@ -52,14 +51,6 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
       "Each player wears a secret name on their forehead. Ask questions and guess who you are before your guesses run out.",
     accent: "facecard",
     playPath: "/facecard/play",
-  },
-  "blink-stacker-duel": {
-    slug: "blink-stacker-duel",
-    title: "BLINK STACKER DUEL",
-    description:
-      "One shared tower — blue then red. Blink to stop your brick when it is your turn; under 50% overlap loses the duel.",
-    accent: "blinkstackerduel",
-    playPath: "/blink-stacker-duel/play",
   },
   "stack-up": {
     slug: "stack-up",

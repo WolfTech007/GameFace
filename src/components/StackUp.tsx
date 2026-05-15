@@ -36,7 +36,8 @@ import {
 
 const QUEUE_POLL_MS = 600;
 const DEFAULT_INTRO = "/stack-up";
-const BLINK_COOLDOWN_MS = 180;
+/** Edge detector cooldown — keep double-blink from firing two stops (target ~150–250ms). */
+const BLINK_COOLDOWN_MS = 200;
 const MIN_BRICK_PX = 40;
 const MIN_BRICK_H_PX = 24;
 
@@ -139,7 +140,6 @@ function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: Stack
   const floorY = raw.floorY;
   const blockH = Math.max(MIN_BRICK_H_PX, raw.blockH * 1.2);
   const gap = Math.max(6, raw.gap);
-  const floatExtra = raw.floatExtra;
   const cam = Number.isFinite(s.cam) ? s.cam : 0;
 
   ctx.save();
@@ -153,7 +153,8 @@ function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: Stack
   });
 
   if (s.phase === "moving") {
-    const floatBottom = floorY - s.tower.length * (blockH + gap) - floatExtra;
+    // Same row as the brick will occupy when locked (no float hover — avoids a post-stop snap down).
+    const floatBottom = floorY - s.tower.length * (blockH + gap);
     const bw = Math.max(MIN_BRICK_PX, s.mwn * arenaW);
     const x = arenaLeft + s.mcn * arenaW - bw / 2;
     const owner = s.activeBlue ? "blue" : "red";
@@ -219,6 +220,15 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const landmarkerRef = useRef<Awaited<ReturnType<typeof createFaceLandmarker>> | null>(null);
   const blinkDetRef = useRef<ReturnType<typeof createBlinkEdgeDetector> | null>(null);
   const guestBrickEpochRef = useRef(0);
+  type GuestOptimisticStop = {
+    brickEpoch: number;
+    mcn: number;
+    flashUntil: number;
+    startedAt: number;
+    towerLen: number;
+  };
+  const guestOptimisticStopRef = useRef<GuestOptimisticStop | null>(null);
+  const guestStopSentForEpochRef = useRef(-1);
   const [centerInstrOpacity, setCenterInstrOpacity] = useState(0);
 
   const [, bumpUi] = useReducer((x: number) => x + 1, 0);
@@ -325,6 +335,8 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     pendingRemoteStreamRef.current = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setCenterInstrOpacity(0);
+    guestOptimisticStopRef.current = null;
+    guestStopSentForEpochRef.current = -1;
   }
 
   function sendToHost(msg: GuestToHostStackUpMsg) {
@@ -399,6 +411,41 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     router.push(introHref ?? DEFAULT_INTRO);
   }
 
+  function clearGuestOptimisticStop() {
+    guestOptimisticStopRef.current = null;
+  }
+
+  function guestPerformStopAttempt() {
+    if (roleRef.current !== "guest") return;
+    const t = performance.now();
+    const s = netRef.current;
+    if (s.phase !== "moving" || s.activeBlue) return;
+    const epoch = guestBrickEpochRef.current;
+    if (epoch === guestStopSentForEpochRef.current) return;
+
+    const canvas = canvasRef.current;
+    const w = canvas?.width ?? 360;
+    const arenaWDraw = Math.max(1, w * 0.88);
+    const elapsedSec = Math.max(0, Math.min(0.12, (t - lastGuestStateSentAtRef.current) / 1000));
+    const mcn = integrateMovingMcnSnapshot(s, arenaWDraw, elapsedSec);
+
+    guestOptimisticStopRef.current = {
+      brickEpoch: epoch,
+      mcn,
+      flashUntil: t + 240,
+      startedAt: t,
+      towerLen: s.tower.length,
+    };
+    guestStopSentForEpochRef.current = epoch;
+
+    sendToHost({
+      t: "stopAttempt",
+      brickEpoch: epoch,
+      clientMcn: mcn,
+      clientStopAt: t,
+    });
+  }
+
   function hostHandleStopFromNetwork(brickEpoch: number) {
     const rt = hostRtRef.current;
     if (!rt) return;
@@ -425,13 +472,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     bumpUi();
   }
 
-  function trySendGuestStop() {
-    if (roleRef.current !== "guest") return;
-    const s = netRef.current;
-    if (s.phase !== "moving" || s.activeBlue) return;
-    sendToHost({ t: "stopAttempt", brickEpoch: guestBrickEpochRef.current });
-  }
-
   const tryStopRef = useRef<() => void>(() => {});
 
   const visionStep = (ts: number) => {
@@ -451,7 +491,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     if (det.tick(ear, ts)) {
       hideHintUntilRef.current = performance.now() + 1200;
       if (roleRef.current === "host") hostHandleLocalStop();
-      else trySendGuestStop();
+      else guestPerformStopAttempt();
     }
   };
 
@@ -475,7 +515,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     if (!myTurn) return;
     hideHintUntilRef.current = performance.now() + 1200;
     if (roleRef.current === "host") hostHandleLocalStop();
-    else trySendGuestStop();
+    else guestPerformStopAttempt();
   };
 
   async function connectAsHost(desiredRoomId: string) {
@@ -537,6 +577,8 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     cleanup();
     lastGuestSeqRef.current = -1;
     lastGuestStateSentAtRef.current = performance.now();
+    guestStopSentForEpochRef.current = -1;
+    guestOptimisticStopRef.current = null;
     setStatus("Joining…");
     setRole("guest");
     setOpponentConnected(false);
@@ -557,6 +599,19 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       lastGuestSeqRef.current = msg.seq;
       lastGuestStateSentAtRef.current = msg.sentAt;
       const authoritative = cloneStackUpState(msg.state);
+      const opt = guestOptimisticStopRef.current;
+      if (opt) {
+        const epochAdvanced = authoritative.brickEpoch !== opt.brickEpoch;
+        const placed = authoritative.tower.length > opt.towerLen;
+        const ended = authoritative.phase === "gameover";
+        const notMoving = authoritative.phase !== "moving";
+        if (epochAdvanced || placed || ended || notMoving) clearGuestOptimisticStop();
+      }
+      const locked = guestStopSentForEpochRef.current;
+      if (locked !== -1) {
+        const stillSameBrick = authoritative.phase === "moving" && authoritative.brickEpoch === locked;
+        if (!stillSameBrick) guestStopSentForEpochRef.current = -1;
+      }
       netRef.current = authoritative;
       guestBrickEpochRef.current = authoritative.brickEpoch;
       maybeBumpGuestUi(authoritative.phase === "lobby" || authoritative.phase === "gameover");
@@ -694,9 +749,9 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
           lastSeenBrickEpochRef.current = s.brickEpoch;
           lastBrickEpochStoppedRef.current = -1;
           const l = layoutFromCanvasHeight(h);
-          const blockH = Math.max(MIN_BRICK_H_PX, l.blockH);
+          const blockH = Math.max(MIN_BRICK_H_PX, l.blockH * 1.2);
           const gap = Math.max(6, l.gap);
-          const floatBottom = l.floorY - s.tower.length * (blockH + gap) - l.floatExtra;
+          const floatBottom = l.floorY - s.tower.length * (blockH + gap);
           const widthPx = Math.max(MIN_BRICK_PX, s.mwn * arenaW);
           const xPx = ((w - arenaW) / 2) + s.mcn * arenaW - widthPx / 2;
           log("new turn block", {
@@ -738,14 +793,30 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       }
 
       if (!canvas || !ctx) return;
+      const clock = performance.now();
       const ds = getDrawState();
       const arenaWDraw = Math.max(1, w * 0.88);
       let toDraw = ds;
       if (roleRef.current === "guest" && ds.phase === "moving") {
-        const elapsedSec = Math.max(0, Math.min(0.12, (performance.now() - lastGuestStateSentAtRef.current) / 1000));
+        const elapsedSec = Math.max(0, Math.min(0.12, (clock - lastGuestStateSentAtRef.current) / 1000));
         const blend = cloneStackUpState(ds);
         blend.mcn = integrateMovingMcnSnapshot(ds, arenaWDraw, elapsedSec);
         toDraw = blend;
+
+        let o = guestOptimisticStopRef.current;
+        if (o && clock - o.startedAt > 750) {
+          clearGuestOptimisticStop();
+          o = null;
+        }
+        if (
+          o &&
+          !ds.activeBlue &&
+          o.brickEpoch === ds.brickEpoch &&
+          o.towerLen === ds.tower.length
+        ) {
+          toDraw.mcn = o.mcn;
+          if (clock < o.flashUntil) toDraw.pulse = clock * 0.024;
+        }
       }
       drawScene(ctx, w, h, toDraw);
     };

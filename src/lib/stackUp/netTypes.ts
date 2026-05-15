@@ -37,4 +37,10 @@ export type HostToGuestStackUpMsg = {
 export type GuestToHostStackUpMsg =
   | { t: "ready"; ready: boolean }
   | { t: "rematch"; want: boolean }
-  | { t: "stopAttempt"; brickEpoch: number };
+  | {
+      t: "stopAttempt";
+      brickEpoch: number;
+      /** Guest's normalized center at tap (host may use for diagnostics; overlap remains host sim). */
+      clientMcn?: number;
+      clientStopAt?: number;
+    };

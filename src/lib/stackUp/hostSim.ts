@@ -147,13 +147,13 @@ export function integrateMovingMcnSnapshot(
 
 export function hostUpdateCamera(s: StackUpNetState, dt: number, canvasH: number, reduceMotion: boolean) {
   if (s.phase !== "moving" && s.phase !== "gameover" && s.phase !== "countdown") return;
-  const { h, floorY, blockH, gap, floatExtra } = layoutFromCanvasHeight(canvasH);
+  const { h, floorY, blockH, gap } = layoutFromCanvasHeight(canvasH);
   const target = computeCameraTargetY({
     canvasH: h,
     floorY,
     blockH,
     gap,
-    floatExtra,
+    floatExtra: 0,
     stackLen: s.tower.length,
   });
   if (reduceMotion) s.cam = target;
