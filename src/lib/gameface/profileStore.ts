@@ -14,6 +14,8 @@ export type GameFaceProfile = {
 
 const PROFILE_KEY = "gameface_profile_v1";
 
+export { PROFILE_KEY };
+
 export function loadProfile(): GameFaceProfile | null {
   if (typeof window === "undefined") return null;
   try {

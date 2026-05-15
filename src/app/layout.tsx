@@ -2,6 +2,7 @@ import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
 import { Bebas_Neue, Inter, Orbitron, Outfit } from "next/font/google";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { GameFaceProfileProvider } from "@/contexts/GameFaceProfileContext";
 
 const inter = Inter({
@@ -52,7 +53,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${outfit.variable} ${bebasNeue.variable} ${orbitron.variable}`}>
       <body className={inter.className}>
-        <GameFaceProfileProvider>{children}</GameFaceProfileProvider>
+        <AuthProvider>
+          <GameFaceProfileProvider>{children}</GameFaceProfileProvider>
+        </AuthProvider>
       </body>
     </html>
   );

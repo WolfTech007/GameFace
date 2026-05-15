@@ -74,3 +74,34 @@
   font-size: 14px;
   color: var(--gf-text-muted);
 }
+
+.errorText {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--gf-radius-sm);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+
+.linksRow {
+  margin: 16px 0 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--gf-text-muted);
+}
+
+.inlineLinkGhost {
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  font-weight: 700;
+  color: rgba(224, 242, 254, 0.95);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

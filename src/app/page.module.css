@@ -163,6 +163,46 @@
   text-decoration: underline;
 }
 
+.homeLogoutBtn {
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  text-decoration: none;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.homeLogoutBtn:hover {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+
+.homeAuthLinks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.homeAuthSep {
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.homeAuthPlaceholder {
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(148, 163, 184, 0.7);
+}
+
 .homeTopDivider {
   height: 1px;
   margin-top: 10px;

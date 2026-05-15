@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { GFButton } from "@/components/gameface";
 import styles from "./page.module.css";
 
 export function HomeTop() {
   const { profile } = useGameFaceProfile();
+  const { user, isLoading, signOut } = useAuth();
   const xp = profile.xp ?? 120;
 
   return (
@@ -39,9 +41,27 @@ export function HomeTop() {
           <GFButton variant="ghost" className={styles.homeChallengeBtn} disabled title="Coming soon">
             Challenge
           </GFButton>
-          <Link href="/login" className={styles.homeAccountLink}>
-            Account
-          </Link>
+          {isLoading ? (
+            <span className={styles.homeAuthPlaceholder} aria-live="polite">
+              …
+            </span>
+          ) : user ? (
+            <button type="button" className={styles.homeLogoutBtn} onClick={() => void signOut()}>
+              Log out
+            </button>
+          ) : (
+            <span className={styles.homeAuthLinks}>
+              <Link href="/login" className={styles.homeAccountLink}>
+                Log in
+              </Link>
+              <span className={styles.homeAuthSep} aria-hidden>
+                ·
+              </span>
+              <Link href="/signup" className={styles.homeAccountLink}>
+                Sign up
+              </Link>
+            </span>
+          )}
         </div>
       </div>
 

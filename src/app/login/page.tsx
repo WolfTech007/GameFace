@@ -1,65 +1,140 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import { describeSignInError } from "@/lib/auth/authErrors";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import styles from "./page.module.css";
 
-export default function LoginPage() {
-  const { setProfile } = useGameFaceProfile();
+function LoginFields() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
+  const searchParams = useSearchParams();
+  const redirectSafe = sanitizeRedirect(searchParams.get("redirect"));
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const u = username.trim().slice(0, 24) || "player";
-    const handle = u.startsWith("@") ? u : `@${u}`;
-    setProfile({
-      username: handle.replace(/^@/, "").toLowerCase(),
-      displayName: u.replace(/^@/, ""),
-      level: 1,
-      rank: "Gold II",
-    });
-    router.replace("/");
+    setError(null);
+
+    const em = email.trim();
+    if (!em.length) {
+      setError("Enter your email.");
+      return;
+    }
+
+    setPending(true);
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const { data, error: signErr } = await supabase.auth.signInWithPassword({
+        email: em,
+        password,
+      });
+
+      if (signErr) {
+        setError(describeSignInError(signErr));
+        return;
+      }
+
+      const user = data.user;
+      if (!user) {
+        setError("Sign-in failed. Try again.");
+        return;
+      }
+
+      const { data: row } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!row?.username) {
+        router.replace("/signup/username");
+        router.refresh();
+        return;
+      }
+
+      router.replace(redirectSafe);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
   }
 
+  return (
+    <>
+      <h1 className={styles.title}>Sign in</h1>
+      <p className={styles.sub}>Use your GameFace account. Session persists on this device.</p>
+
+      {error ? (
+        <p className={styles.errorText} role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <form className={styles.form} onSubmit={(e) => void onSubmit(e)}>
+        <label className={styles.label}>
+          Email
+          <input
+            className={styles.input}
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+        </label>
+        <label className={styles.label}>
+          Password
+          <input
+            className={styles.input}
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            autoComplete="current-password"
+          />
+        </label>
+        <button type="submit" className={styles.submit} disabled={pending}>
+          {pending ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+
+      <p className={styles.linksRow}>
+        New here?{" "}
+        <Link href="/signup" className={styles.inlineLink}>
+          Create account
+        </Link>
+      </p>
+
+      <Link href="/" className={styles.skip}>
+        Back to home
+      </Link>
+    </>
+  );
+}
+
+function sanitizeRedirect(raw: string | null): string {
+  const fallback = "/";
+  if (!raw?.startsWith("/")) return fallback;
+  if (raw.startsWith("//")) return fallback;
+  if (raw === "/login" || raw === "/signup") return fallback;
+  return raw;
+}
+
+export default function LoginPage() {
   return (
     <main className={styles.root}>
       <div className={styles.card}>
         <p className={styles.brand}>GAMEFACE</p>
-        <h1 className={styles.title}>Sign in</h1>
-        <p className={styles.sub}>Use your GameFace account. Session is stored on this device.</p>
-        <form className={styles.form} onSubmit={onSubmit}>
-          <label className={styles.label}>
-            Username
-            <input
-              className={styles.input}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="@you"
-              autoComplete="username"
-            />
-          </label>
-          <label className={styles.label}>
-            Password
-            <input
-              className={styles.input}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-            />
-          </label>
-          <button type="submit" className={styles.submit}>
-            Continue
-          </button>
-        </form>
-        <Link href="/" className={styles.skip}>
-          Skip for now
-        </Link>
+        <Suspense fallback={<p className={styles.sub}>Loading…</p>}>
+          <LoginFields />
+        </Suspense>
       </div>
     </main>
   );
