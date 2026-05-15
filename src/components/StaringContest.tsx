@@ -26,6 +26,8 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 type Phase =
@@ -50,6 +52,10 @@ const VIDEO_DEBUG =
 export type StaringContestProps = {
   autoJoinPublicQueue?: boolean;
   fromRandomMatch?: boolean;
+  privateInviteLoading?: boolean;
+  privateInviteError?: string | null;
+  privateMatch?: PrivateMatchPayload | null;
+  privateInviteCode?: string | null;
   introSlug?: GameIntroSlug;
 };
 
@@ -98,7 +104,11 @@ function median(nums: number[]) {
 
 export default function StaringContest({
   autoJoinPublicQueue = false,
-  fromRandomMatch: _fromRandomMatch = false,
+  fromRandomMatch = false,
+  privateInviteLoading = false,
+  privateInviteError = null,
+  privateMatch = null,
+  privateInviteCode = null,
   introSlug,
 }: StaringContestProps) {
   const router = useRouter();
@@ -119,7 +129,9 @@ export default function StaringContest({
   /** Dev-only: forces re-read of video debug fields. */
   const [, setVideoDebugTick] = useState(0);
 
-  const [phase, setPhase] = useState<Phase>(() => (autoJoinPublicQueue ? "queue" : "intro"));
+  const [phase, setPhase] = useState<Phase>(() =>
+    autoJoinPublicQueue || fromRandomMatch || privateInviteLoading ? "queue" : "intro",
+  );
   const phaseRef = useRef<Phase>("intro");
   useEffect(() => {
     phaseRef.current = phase;
@@ -130,7 +142,7 @@ export default function StaringContest({
     nameRef.current = profile.displayName.trim().slice(0, 24) || "Player";
   }, [profile.displayName]);
 
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(() => (privateInviteLoading ? "Connecting to friend match…" : ""));
   const [opponentName, setOpponentName] = useState<string | null>(null);
 
   const [role, setRole] = useState<Role | null>(null);
@@ -161,6 +173,7 @@ export default function StaringContest({
   const blinkBlendSmootherRef = useRef(createHighSignalSmoother(3, 0.38));
   const faceMissingSinceRef = useRef<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
+  const privateAppliedRef = useRef(false);
 
   const rematchIntentRef = useRef<RematchIntent>(emptyRematchIntent());
   const [, setRematchBump] = useState(0);
@@ -406,6 +419,18 @@ export default function StaringContest({
   useConsumePendingMatch("staring", (p) => {
     void applyMatch(p.peerRoomId, p.role, "");
   });
+
+  useEffect(() => {
+    if (!privateInviteError || privateInviteLoading) return;
+    setPhase("intro");
+    setStatus(privateInviteError);
+  }, [privateInviteError, privateInviteLoading]);
+
+  useEffect(() => {
+    if (!privateMatch || privateAppliedRef.current) return;
+    privateAppliedRef.current = true;
+    void applyMatch(privateMatch.peerRoomId, privateMatch.role, "");
+  }, [privateMatch]);
 
   function resolveLoss(fromHost: boolean) {
     if (gameEndedRef.current) return;
@@ -811,7 +836,7 @@ export default function StaringContest({
           gameTitle={introCfg.title}
           howToPlayText={introCfg.description}
           onFindMatch={() => void findMatch()}
-          onChallengeFriend={() => router.push("/friends")}
+          onChallengeFriend={() => void startPrivateFriendChallenge(router, introCfg.slug)}
           onGoHome={() => router.push("/")}
         />
       ) : null}
@@ -958,6 +983,16 @@ export default function StaringContest({
                         >
                           {localReady ? "Cancel ready" : "Ready"}
                         </button>
+                        {role === "host" && privateInviteCode && !dataChannelReady ? (
+                          <button
+                            type="button"
+                            className={gp.surfacePillGhost}
+                            style={{ marginTop: "10px", width: "100%" }}
+                            onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+                          >
+                            Copy invite link
+                          </button>
+                        ) : null}
                         <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
                           Them: {remoteReady ? "Ready ✓" : "Waiting"}
                         </div>

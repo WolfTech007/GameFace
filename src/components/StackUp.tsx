@@ -21,6 +21,8 @@ import { GFBottomNav } from "@/components/gameface/GFBottomNav";
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import styles from "./StackUp.module.css";
 import type { GuestToHostStackUpMsg, HostToGuestStackUpMsg, StackUpNetState, StackUpSeg } from "@/lib/stackUp/netTypes";
 import {
@@ -168,15 +170,28 @@ function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: Stack
 export type StackUpProps = {
   autoJoinPublicQueue?: boolean;
   fromRandomMatch?: boolean;
+  privateInviteLoading?: boolean;
+  privateInviteError?: string | null;
+  privateMatch?: PrivateMatchPayload | null;
+  privateInviteCode?: string | null;
   introSlug?: GameIntroSlug;
 };
 
-export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch = false, introSlug }: StackUpProps) {
+export default function StackUp({
+  autoJoinPublicQueue = false,
+  fromRandomMatch = false,
+  privateInviteLoading = false,
+  privateInviteError = null,
+  privateMatch = null,
+  privateInviteCode = null,
+  introSlug,
+}: StackUpProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
   const clientId = profile.userId;
 
-  const initialPhase: UiPhase = autoJoinPublicQueue || fromRandomMatch ? "matchmaking" : "menu";
+  const initialPhase: UiPhase =
+    autoJoinPublicQueue || fromRandomMatch || privateInviteLoading ? "matchmaking" : "menu";
   const [uiPhase, setUiPhase] = useState<UiPhase>(initialPhase);
   const uiPhaseRef = useRef<UiPhase>(initialPhase);
   useEffect(() => {
@@ -191,12 +206,21 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   }, [role]);
 
   const [roomId, setRoomId] = useState<string | null>(null);
-  const [status, setStatus] = useState(() => (autoJoinPublicQueue ? "Searching for opponent…" : fromRandomMatch ? "Connecting…" : "Idle"));
+  const [status, setStatus] = useState(() =>
+    autoJoinPublicQueue
+      ? "Searching for opponent…"
+      : fromRandomMatch
+        ? "Connecting…"
+        : privateInviteLoading
+          ? "Connecting to friend match…"
+          : "Idle",
+  );
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
   const matchPollRef = useRef<number | null>(null);
+  const privateAppliedRef = useRef(false);
   const localStreamRef = useRef<MediaStream | null>(null);
   const hostRtRef = useRef<StackUpHostRuntime | null>(null);
   const netRef = useRef<StackUpNetState>(cloneStackUpState(createStackUpHostRuntime().state));
@@ -673,6 +697,18 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     }
   }
 
+  useEffect(() => {
+    if (!privateInviteError || privateInviteLoading) return;
+    setUiPhase("menu");
+    setStatus(privateInviteError);
+  }, [privateInviteError, privateInviteLoading]);
+
+  useEffect(() => {
+    if (!privateMatch || privateAppliedRef.current) return;
+    privateAppliedRef.current = true;
+    void applyMatch(privateMatch.peerRoomId, privateMatch.role);
+  }, [privateMatch]);
+
   async function findMatch() {
     if (matchPollRef.current) {
       window.clearInterval(matchPollRef.current);
@@ -1018,7 +1054,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
             gameTitle={introCfg.title}
             howToPlayText={introCfg.description}
             onFindMatch={() => void findMatch()}
-            onChallengeFriend={() => router.push("/friends")}
+            onChallengeFriend={() => void startPrivateFriendChallenge(router, introCfg.slug)}
             onGoHome={goHome}
           />
         ) : null}
@@ -1070,6 +1106,15 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
                   ) : null}
                 </div>
                 <div className={styles.row}>
+                  {role === "host" && privateInviteCode && !opponentConnected ? (
+                    <button
+                      type="button"
+                      className={styles.buttonSecondary}
+                      onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+                    >
+                      Copy invite link
+                    </button>
+                  ) : null}
                   <button type="button" className={styles.buttonSecondary} onClick={leaveMatch}>
                     Back
                   </button>

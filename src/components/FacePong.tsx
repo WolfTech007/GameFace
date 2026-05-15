@@ -22,6 +22,8 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
@@ -106,6 +108,10 @@ const PADDLE_WORLD_Y_BOT = 0.92;
 export type FacePongProps = {
   autoJoinPublicQueue?: boolean;
   fromRandomMatch?: boolean;
+  privateInviteLoading?: boolean;
+  privateInviteError?: string | null;
+  privateMatch?: PrivateMatchPayload | null;
+  privateInviteCode?: string | null;
   /** Copy + accent for the pre-game overlay on `/facepong/play` */
   introSlug?: GameIntroSlug;
 };
@@ -113,6 +119,10 @@ export type FacePongProps = {
 export default function FacePong({
   autoJoinPublicQueue = false,
   fromRandomMatch = false,
+  privateInviteLoading = false,
+  privateInviteError = null,
+  privateMatch = null,
+  privateInviteCode = null,
   introSlug,
 }: FacePongProps) {
   const router = useRouter();
@@ -126,7 +136,8 @@ export default function FacePong({
   const frameRef = useRef<HTMLDivElement | null>(null);
 
   /** Random universal match lands with `?gf=1` only — match is already resolved; skip menu flash. */
-  const initialPhase: UiPhase = autoJoinPublicQueue || fromRandomMatch ? "matchmaking" : "menu";
+  const initialPhase: UiPhase =
+    autoJoinPublicQueue || fromRandomMatch || privateInviteLoading ? "matchmaking" : "menu";
   const [uiPhase, setUiPhase] = useState<UiPhase>(initialPhase);
   const uiPhaseRef = useRef<UiPhase>(initialPhase);
   useEffect(() => {
@@ -136,7 +147,13 @@ export default function FacePong({
   const [role, setRole] = useState<Role | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>(() =>
-    autoJoinPublicQueue ? "Searching for opponent…" : fromRandomMatch ? "Connecting…" : "Idle",
+    autoJoinPublicQueue
+      ? "Searching for opponent…"
+      : fromRandomMatch
+        ? "Connecting…"
+        : privateInviteLoading
+          ? "Connecting to friend match…"
+          : "Idle",
   );
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
@@ -152,6 +169,7 @@ export default function FacePong({
   const dataRef = useRef<any>(null);
   const destroyRef = useRef<null | (() => void)>(null);
   const matchPollRef = useRef<number | null>(null);
+  const privateAppliedRef = useRef(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const hostStateRef = useRef<FacePongNetState>(makeInitialNetState());
@@ -776,6 +794,18 @@ export default function FacePong({
     void applyMatch(p.peerRoomId, p.role);
   });
 
+  useEffect(() => {
+    if (!privateInviteError || privateInviteLoading) return;
+    setUiPhase("menu");
+    setStatus(privateInviteError);
+  }, [privateInviteError, privateInviteLoading]);
+
+  useEffect(() => {
+    if (!privateMatch || privateAppliedRef.current) return;
+    privateAppliedRef.current = true;
+    void applyMatch(privateMatch.peerRoomId, privateMatch.role);
+  }, [privateMatch]);
+
   async function findMatch() {
     if (matchPollRef.current) {
       window.clearInterval(matchPollRef.current);
@@ -1031,7 +1061,7 @@ export default function FacePong({
             gameTitle={introCfg.title}
             howToPlayText={introCfg.description}
             onFindMatch={() => void findMatch()}
-            onChallengeFriend={() => router.push("/friends")}
+            onChallengeFriend={() => void startPrivateFriendChallenge(router, introCfg.slug)}
             onGoHome={() => router.push("/")}
           />
         ) : null}
@@ -1098,6 +1128,15 @@ export default function FacePong({
               </div>
 
               <div className={styles.row2}>
+                {role === "host" && privateInviteCode && !opponentConnected ? (
+                  <button
+                    className={`${styles.button} ${styles.buttonSecondary}`}
+                    type="button"
+                    onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+                  >
+                    Copy invite link
+                  </button>
+                ) : null}
                 <button
                   className={`${styles.button} ${styles.buttonSecondary}`}
                   type="button"

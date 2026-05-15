@@ -27,6 +27,8 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
@@ -40,6 +42,10 @@ export type LipReaderProps = {
   autoJoinPublicQueue?: boolean;
   /** From `/charades/play?gf=1` after universal random match (pending payload in session) */
   fromRandomMatch?: boolean;
+  privateInviteLoading?: boolean;
+  privateInviteError?: string | null;
+  privateMatch?: PrivateMatchPayload | null;
+  privateInviteCode?: string | null;
   introSlug?: GameIntroSlug;
 };
 
@@ -71,6 +77,10 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
 export default function LipReader({
   autoJoinPublicQueue = false,
   fromRandomMatch = false,
+  privateInviteLoading = false,
+  privateInviteError = null,
+  privateMatch = null,
+  privateInviteCode = null,
   introSlug,
 }: LipReaderProps) {
   const router = useRouter();
@@ -80,14 +90,16 @@ export default function LipReader({
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  const [uiMenu, setUiMenu] = useState(() => !autoJoinPublicQueue && !fromRandomMatch);
-  const [matchmaking, setMatchmaking] = useState(false);
+  const [uiMenu, setUiMenu] = useState(() => !autoJoinPublicQueue && !fromRandomMatch && !privateInviteLoading);
+  const [matchmaking, setMatchmaking] = useState(() => autoJoinPublicQueue || privateInviteLoading);
   const nameRef = useRef(profile.displayName.trim().slice(0, 24) || "Player");
   useEffect(() => {
     nameRef.current = profile.displayName.trim().slice(0, 24) || "Player";
   }, [profile.displayName]);
 
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(() =>
+    privateInviteLoading ? "Connecting to friend match…" : "",
+  );
   const [role, setRole] = useState<Role | null>(null);
   const roleRef = useRef<Role | null>(null);
   useEffect(() => {
@@ -102,6 +114,7 @@ export default function LipReader({
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
   const matchPollRef = useRef<number | null>(null);
+  const privateAppliedRef = useRef(false);
   const scheduledTimersRef = useRef<number[]>([]);
 
   /** Host: full authoritative state. Guest: redacted copy from host (no secret when guesser). */
@@ -569,6 +582,19 @@ export default function LipReader({
     void applyMatch(p.peerRoomId, p.role);
   });
 
+  useEffect(() => {
+    if (!privateInviteError || privateInviteLoading) return;
+    setUiMenu(true);
+    setMatchmaking(false);
+    setStatus(privateInviteError);
+  }, [privateInviteError, privateInviteLoading]);
+
+  useEffect(() => {
+    if (!privateMatch || privateAppliedRef.current) return;
+    privateAppliedRef.current = true;
+    void applyMatch(privateMatch.peerRoomId, privateMatch.role);
+  }, [privateMatch]);
+
   async function findMatch() {
     setUiMenu(false);
     setMatchmaking(true);
@@ -767,6 +793,19 @@ export default function LipReader({
             ) : null}
           </div>
 
+          {!uiMenu && role === "host" && privateInviteCode && !opponentConnected ? (
+            <div className={gp.surfaceDock}>
+              <button
+                type="button"
+                className={gp.surfacePillGhost}
+                onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+              >
+                Copy invite link
+              </button>
+              <span className={gp.dockCaption}>Share this link so your teammate can join.</span>
+            </div>
+          ) : null}
+
           {!uiMenu && !matchmaking && opponentConnected && gs.phase === "playing" ? (
             <div className={gp.hintFloat}>
               {iAmCommunicator ? "Mic off while you clue — go big." : "Their mic is off while they clue — read their lips."}
@@ -903,7 +942,7 @@ export default function LipReader({
           gameTitle={introCfg.title}
           howToPlayText={introCfg.description}
           onFindMatch={() => void findMatch()}
-          onChallengeFriend={() => router.push("/friends")}
+          onChallengeFriend={() => void startPrivateFriendChallenge(router, introCfg.slug)}
           onGoHome={() => router.push("/")}
         />
       ) : null}

@@ -24,6 +24,8 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 type Phase = "intro" | "queue" | "peer_setup" | "lobby" | "playing" | "ended";
@@ -83,12 +85,20 @@ type EndPayload =
 export type FaceCardProps = {
   autoJoinPublicQueue?: boolean;
   fromRandomMatch?: boolean;
+  privateInviteLoading?: boolean;
+  privateInviteError?: string | null;
+  privateMatch?: PrivateMatchPayload | null;
+  privateInviteCode?: string | null;
   introSlug?: GameIntroSlug;
 };
 
 export default function FaceCard({
   autoJoinPublicQueue = false,
   fromRandomMatch = false,
+  privateInviteLoading = false,
+  privateInviteError = null,
+  privateMatch = null,
+  privateInviteCode = null,
   introSlug,
 }: FaceCardProps) {
   const router = useRouter();
@@ -101,7 +111,7 @@ export default function FaceCard({
   const remoteOverlayRef = useRef<HTMLCanvasElement | null>(null);
 
   const [phase, setPhase] = useState<Phase>(() =>
-    autoJoinPublicQueue || fromRandomMatch ? "queue" : "intro",
+    autoJoinPublicQueue || fromRandomMatch || privateInviteLoading ? "queue" : "intro",
   );
   const phaseRef = useRef<Phase>("intro");
   useEffect(() => {
@@ -114,7 +124,13 @@ export default function FaceCard({
   }, [profile.displayName]);
 
   const [status, setStatus] = useState(() =>
-    autoJoinPublicQueue ? "Finding a stranger…" : fromRandomMatch ? "Connecting…" : "",
+    autoJoinPublicQueue
+      ? "Finding a stranger…"
+      : fromRandomMatch
+        ? "Connecting…"
+        : privateInviteLoading
+          ? "Connecting to friend match…"
+          : "",
   );
   const [opponentName, setOpponentName] = useState<string | null>(null);
 
@@ -168,6 +184,7 @@ export default function FaceCard({
   const streamRef = useRef<MediaStream | null>(null);
 
   const pollTimerRef = useRef<number | null>(null);
+  const privateAppliedRef = useRef(false);
 
   const sendNet = useCallback((msg: FaceCardNetMsg) => {
     const c = dataRef.current as { open?: boolean; send?: (m: FaceCardNetMsg) => void } | null;
@@ -598,6 +615,18 @@ export default function FaceCard({
     void applyMatch(p.peerRoomId, p.role, "");
   });
 
+  useEffect(() => {
+    if (!privateInviteError || privateInviteLoading) return;
+    setPhase("intro");
+    setStatus(privateInviteError);
+  }, [privateInviteError, privateInviteLoading]);
+
+  useEffect(() => {
+    if (!privateMatch || privateAppliedRef.current) return;
+    privateAppliedRef.current = true;
+    void applyMatch(privateMatch.peerRoomId, privateMatch.role, "");
+  }, [privateMatch]);
+
   async function findMatch() {
     setPhase("queue");
     setStatus("Finding a stranger…");
@@ -853,7 +882,7 @@ export default function FaceCard({
           gameTitle={introCfg.title}
           howToPlayText={introCfg.description}
           onFindMatch={() => void findMatch()}
-          onChallengeFriend={() => router.push("/friends")}
+          onChallengeFriend={() => void startPrivateFriendChallenge(router, introCfg.slug)}
           onGoHome={() => router.push("/")}
         />
       ) : null}
@@ -969,6 +998,16 @@ export default function FaceCard({
                     <button type="button" className={gp.surfacePill} style={{ marginTop: "14px", width: "100%" }} onClick={toggleReady}>
                       {localReady ? "Cancel ready" : "Ready"}
                     </button>
+                    {role === "host" && privateInviteCode && !remoteReady ? (
+                      <button
+                        type="button"
+                        className={gp.surfacePillGhost}
+                        style={{ marginTop: "10px", width: "100%" }}
+                        onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+                      >
+                        Copy invite link
+                      </button>
+                    ) : null}
                     <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
                       Them: {remoteReady ? "Ready ✓" : "Waiting"}
                     </div>
