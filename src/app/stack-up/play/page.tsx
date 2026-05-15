@@ -5,9 +5,13 @@ import { GamePlayEntrance } from "@/components/gameface/GamePlayEntrance";
 
 export default function StackUpPlayPage() {
   return (
-    <GamePlayEntrance introHref="/stack-up">
+    <GamePlayEntrance>
       {({ autoJoinPublicQueue, fromRandomMatch }) => (
-        <StackUp autoJoinPublicQueue={autoJoinPublicQueue} fromRandomMatch={fromRandomMatch} introHref="/stack-up" />
+        <StackUp
+          autoJoinPublicQueue={autoJoinPublicQueue}
+          fromRandomMatch={fromRandomMatch}
+          introSlug="stack-up"
+        />
       )}
     </GamePlayEntrance>
   );

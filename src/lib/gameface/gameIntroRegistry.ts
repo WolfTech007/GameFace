@@ -1,12 +1,19 @@
-/** Routes under `/` that show the universal GameIntro (not the live arena). */
+/** Canonical slugs for copy + accent (used by GameIntroOverlay on `/play` routes). */
 export type GameIntroSlug =
   | "charades"
   | "staring-contest"
   | "facepong"
   | "facecard"
-  | "stack-up";
+  | "stack-up"
+  | "blink-stacker";
 
-export type GameIntroAccent = "charades" | "staring" | "facepong" | "facecard" | "blinkstackerduel";
+export type GameIntroAccent =
+  | "charades"
+  | "staring"
+  | "facepong"
+  | "facecard"
+  | "blinkstackerduel"
+  | "blinkstacker";
 
 export type GameIntroConfig = {
   slug: GameIntroSlug;
@@ -59,5 +66,13 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
       "Build a shared tower directly on your opponent's live camera feed. Take turns blinking to stop the moving block.",
     accent: "blinkstackerduel",
     playPath: "/stack-up/play",
+  },
+  "blink-stacker": {
+    slug: "blink-stacker",
+    title: "BLINK STACKER",
+    description:
+      "Stack the tower: when the moving block lines up, blink (or press Space / tap) to lock it. Too little overlap and the run ends.",
+    accent: "blinkstacker",
+    playPath: "/blink-stacker",
   },
 };

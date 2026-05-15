@@ -1,5 +1,5 @@
-import { GameIntro } from "@/components/gameface/GameIntro";
+import { redirect } from "next/navigation";
 
 export default function FacePongIntroPage() {
-  return <GameIntro slug="facepong" />;
+  redirect("/facepong/play");
 }

@@ -1,5 +1,5 @@
-import { GameIntro } from "@/components/gameface/GameIntro";
+import { redirect } from "next/navigation";
 
 export default function StaringContestIntroPage() {
-  return <GameIntro slug="staring-contest" />;
+  redirect("/staring-contest/play");
 }

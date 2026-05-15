@@ -5,12 +5,12 @@ import FacePong from "@/components/FacePong";
 
 export default function FacePongPlayPage() {
   return (
-    <GamePlayEntrance introHref="/facepong">
+    <GamePlayEntrance>
       {({ autoJoinPublicQueue, fromRandomMatch }) => (
         <FacePong
           autoJoinPublicQueue={autoJoinPublicQueue}
           fromRandomMatch={fromRandomMatch}
-          introHref="/facepong"
+          introSlug="facepong"
         />
       )}
     </GamePlayEntrance>

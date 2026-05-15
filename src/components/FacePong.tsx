@@ -20,12 +20,11 @@ import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
 import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
+import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
+import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
-
-/** Landing page (rules + Find Match) when returning from `/facepong/play`. */
-const DEFAULT_FACEPONG_INTRO_HREF = "/facepong";
 
 /** Dev-only sync/presentation diagnostics (blue panel). Off in production builds. */
 const FP_UI_DEBUG = process.env.NODE_ENV === "development";
@@ -107,13 +106,14 @@ const PADDLE_WORLD_Y_BOT = 0.92;
 export type FacePongProps = {
   autoJoinPublicQueue?: boolean;
   fromRandomMatch?: boolean;
-  introHref?: string;
+  /** Copy + accent for the pre-game overlay on `/facepong/play` */
+  introSlug?: GameIntroSlug;
 };
 
 export default function FacePong({
   autoJoinPublicQueue = false,
   fromRandomMatch = false,
-  introHref,
+  introSlug,
 }: FacePongProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
@@ -798,12 +798,21 @@ export default function FacePong({
       matchPollRef.current = null;
     }
     void leaveQueue();
-    router.push(introHref ?? DEFAULT_FACEPONG_INTRO_HREF);
+    setUiPhase("menu");
+    setStatus("Idle");
   }
 
   function leaveMatch() {
     cleanup();
-    router.push(introHref ?? DEFAULT_FACEPONG_INTRO_HREF);
+    hostResetState();
+    setUiPhase("menu");
+    setRole(null);
+    setRoomId(null);
+    setStatus("Idle");
+    setOpponentConnected(false);
+    setOpponentLeftMatch(false);
+    setRallyScore(0);
+    setMicOk(null);
   }
 
   function requestRematch() {
@@ -885,6 +894,7 @@ export default function FacePong({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role, opponentConnected]);
 
+  const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY.facepong;
   const showMenu = uiPhase === "menu";
   const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
@@ -992,35 +1002,34 @@ export default function FacePong({
           </div>
         ) : null}
 
-        {showMenu || showMatchmaking ? (
+        {showMenu && !showMatchmaking ? (
+          <GameIntroOverlay
+            placement="frame"
+            accent={introCfg.accent}
+            gameTitle={introCfg.title}
+            howToPlayText={introCfg.description}
+            onFindMatch={() => void findMatch()}
+            onChallengeFriend={() => router.push("/friends")}
+            onGoHome={() => router.push("/")}
+          />
+        ) : null}
+
+        {showMatchmaking ? (
           <div className={styles.overlay}>
             <div className={styles.card}>
               <div className={styles.title}>FacePong</div>
-              {showMatchmaking ? (
-                <>
-                  <div className={styles.sub}>Searching for an opponent…</div>
-                  <div className={styles.row}>
-                    <button
-                      className={`${styles.button} ${styles.buttonSecondary}`}
-                      type="button"
-                      onClick={cancelMatchmaking}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className={styles.sub}>
-                    Match with the next available player (same queue style as Staring Contest).
-                  </div>
-                  <div className={styles.row}>
-                    <button className={styles.button} type="button" onClick={() => void findMatch()}>
-                      Find Match
-                    </button>
-                  </div>
-                </>
-              )}
+              <>
+                <div className={styles.sub}>Searching for an opponent…</div>
+                <div className={styles.row}>
+                  <button
+                    className={`${styles.button} ${styles.buttonSecondary}`}
+                    type="button"
+                    onClick={cancelMatchmaking}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
               <div className={styles.status}>{status}</div>
               {micOk === false ? (
                 <div className={styles.status}>
@@ -1071,8 +1080,7 @@ export default function FacePong({
                   className={`${styles.button} ${styles.buttonSecondary}`}
                   type="button"
                   onClick={() => {
-                    cleanup();
-                    router.push(introHref ?? DEFAULT_FACEPONG_INTRO_HREF);
+                    leaveMatch();
                   }}
                 >
                   Back

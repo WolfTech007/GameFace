@@ -1,4 +1,4 @@
-import { OVERLAP_WIN_MIN, SPEED_BASE_PX, SPEED_MAX_PX, SPEED_PER_LEVEL_PX } from "@/lib/blinkStacker/constants";
+import { SPEED_BASE_PX, SPEED_MAX_PX, SPEED_PER_LEVEL_PX } from "@/lib/blinkStacker/constants";
 import { computeCameraTargetY, layoutFromCanvasHeight, smoothCamera } from "@/lib/blinkStacker/camera";
 import { horizontalOverlap, overlapFractionOfMoving } from "@/lib/blinkStacker/overlap";
 import type { StackUpNetState, StackUpOwner } from "./netTypes";
@@ -6,6 +6,8 @@ import type { StackUpNetState, StackUpOwner } from "./netTypes";
 const BASE_WN = 0.7;
 const COUNTDOWN_TOTAL_MS = 3200;
 const SPEED_MULT = 2.05 * 0.8;
+/** Min fraction of moving width overlapping the brick below to count as a success (Stack Up only; solo Blink Stacker uses OVERLAP_WIN_MIN in constants). */
+const STACK_UP_OVERLAP_WIN_MIN = 0.1;
 
 export type StackUpHostRuntime = {
   state: StackUpNetState;
@@ -180,7 +182,7 @@ export function hostApplyStop(rt: StackUpHostRuntime, now: number): { miss: bool
     return { miss: false, perfect: false };
   }
 
-  if (frac < OVERLAP_WIN_MIN) {
+  if (frac < STACK_UP_OVERLAP_WIN_MIN) {
     s.loser = s.activeBlue ? "blue" : "red";
     s.phase = "gameover";
     s.rematch = { host: false, guest: false };

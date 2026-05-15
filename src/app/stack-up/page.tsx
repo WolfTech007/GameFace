@@ -1,5 +1,5 @@
-import { GameIntro } from "@/components/gameface/GameIntro";
+import { redirect } from "next/navigation";
 
 export default function StackUpIntroPage() {
-  return <GameIntro slug="stack-up" />;
+  redirect("/stack-up/play");
 }

@@ -341,6 +341,21 @@
   text-shadow: 0 0 34px rgba(56, 189, 248, 0.8);
 }
 
+.introLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  box-sizing: border-box;
+  background: rgba(2, 6, 16, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
 .menuWrap {
   position: relative;
   z-index: 4;

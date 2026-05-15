@@ -5,12 +5,12 @@ import FaceCard from "@/components/FaceCard";
 
 export default function FaceCardPlayPage() {
   return (
-    <GamePlayEntrance introHref="/facecard">
+    <GamePlayEntrance>
       {({ autoJoinPublicQueue, fromRandomMatch }) => (
         <FaceCard
           autoJoinPublicQueue={autoJoinPublicQueue}
           fromRandomMatch={fromRandomMatch}
-          introHref="/facecard"
+          introSlug="facecard"
         />
       )}
     </GamePlayEntrance>

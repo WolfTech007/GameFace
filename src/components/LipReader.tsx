@@ -25,12 +25,12 @@ import { emptyRematchIntent, rematchBothWant } from "@/lib/rematchSync";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
+import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 const QUEUE_POLL_MS = 600;
-/** Landing page (rules + Find Match) when returning from `/charades/play`. */
-const DEFAULT_CHARADES_INTRO_HREF = "/charades";
 /** Set true locally to verify round/guess sync; keep false in production. */
 const LIP_READER_UI_DEBUG = false;
 
@@ -39,8 +39,7 @@ export type LipReaderProps = {
   autoJoinPublicQueue?: boolean;
   /** From `/charades/play?gf=1` after universal random match (pending payload in session) */
   fromRandomMatch?: boolean;
-  /** Navigate here when leaving back to the game intro */
-  introHref?: string;
+  introSlug?: GameIntroSlug;
 };
 
 type Role = "host" | "guest";
@@ -71,7 +70,7 @@ async function connectGuestWithRetry(peer: Parameters<typeof connectGuestToHost>
 export default function LipReader({
   autoJoinPublicQueue = false,
   fromRandomMatch = false,
-  introHref,
+  introSlug,
 }: LipReaderProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
@@ -375,7 +374,13 @@ export default function LipReader({
 
   function leaveMatch() {
     cleanup();
-    router.push(introHref ?? DEFAULT_CHARADES_INTRO_HREF);
+    setUiMenu(true);
+    setMatchmaking(false);
+    setRole(null);
+    setRoomId(null);
+    setOpponentConnected(false);
+    setOpponentLeftMatch(false);
+    setStatus("");
   }
 
   function returnToArcade() {
@@ -561,6 +566,7 @@ export default function LipReader({
   });
 
   async function findMatch() {
+    setUiMenu(false);
     setMatchmaking(true);
     setStatus("Searching…");
 
@@ -599,8 +605,8 @@ export default function LipReader({
     }
     void leaveQueue();
     setMatchmaking(false);
+    setUiMenu(true);
     setStatus("");
-    router.push(introHref ?? DEFAULT_CHARADES_INTRO_HREF);
   }
 
   const gs = gameStateRef.current;
@@ -682,6 +688,8 @@ export default function LipReader({
     setGuessModalOpen(false);
     setGuessInput("");
   }, [viewGen]);
+
+  const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY.charades;
 
   const showDuelHud = !uiMenu;
 
@@ -853,32 +861,31 @@ export default function LipReader({
         </div>
       ) : null}
 
-      {uiMenu || matchmaking ? (
+      {uiMenu && !matchmaking ? (
+        <GameIntroOverlay
+          placement="viewport"
+          accent={introCfg.accent}
+          gameTitle={introCfg.title}
+          howToPlayText={introCfg.description}
+          onFindMatch={() => void findMatch()}
+          onChallengeFriend={() => router.push("/friends")}
+          onGoHome={() => router.push("/")}
+        />
+      ) : null}
+
+      {matchmaking ? (
         <div className={gp.fullOverlay}>
           <div className={gp.glassPanel}>
             <div className={gp.stinger} style={{ fontSize: "clamp(22px, 6vw, 28px)", marginBottom: "8px" }}>
-              Charades
+              {introCfg.title}
             </div>
             <p className={gp.resultDetail}>Playing as @{profile.username}</p>
-            {matchmaking ? (
-              <>
-                <button type="button" className={gp.surfacePillGhost} style={{ marginTop: "16px", width: "100%" }} onClick={cancelMatchmaking}>
-                  Cancel
-                </button>
-                <div className={gp.resultDetail} style={{ marginTop: "12px", textAlign: "center" }}>
-                  {status}
-                </div>
-              </>
-            ) : (
-              <>
-                <button type="button" className={gp.surfacePill} style={{ marginTop: "16px", width: "100%" }} onClick={() => void findMatch()}>
-                  Find match
-                </button>
-                <div className={gp.resultDetail} style={{ marginTop: "12px", textAlign: "center" }}>
-                  {status}
-                </div>
-              </>
-            )}
+            <button type="button" className={gp.surfacePillGhost} style={{ marginTop: "16px", width: "100%" }} onClick={cancelMatchmaking}>
+              Cancel
+            </button>
+            <div className={gp.resultDetail} style={{ marginTop: "12px", textAlign: "center" }}>
+              {status}
+            </div>
             {micOk === false ? (
               <div className={gp.resultDetail} style={{ marginTop: "10px", textAlign: "center" }}>
                 Enable the microphone so your opponent can hear guesses.

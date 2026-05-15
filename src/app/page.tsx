@@ -33,20 +33,20 @@ export default function Page() {
 
           <div className={styles.gameCardList}>
             <GFGameCard
-              href="/charades"
+              href="/charades/play"
               title="Charades"
               descriptor="Guess the muted word."
               accent="charades"
             />
             <GFGameCard
-              href="/staring-contest"
+              href="/staring-contest/play"
               title="Staring Contest"
               descriptor="Don't blink."
               accent="staring"
             />
-            <GFGameCard href="/facepong" title="FacePong" descriptor="1v1 webcam pong." accent="facepong" />
+            <GFGameCard href="/facepong/play" title="FacePong" descriptor="1v1 webcam pong." accent="facepong" />
             <GFGameCard
-              href="/facecard"
+              href="/facecard/play"
               title="Face Card"
               descriptor="Guess the name on your forehead."
               accent="facecard"
@@ -58,7 +58,7 @@ export default function Page() {
               accent="blinkstacker"
               mode="solo"
             />
-            <GFGameCard href="/stack-up" title="Stack Up" descriptor="1v1 · stack on your opponent." accent="blinkstackerduel" />
+            <GFGameCard href="/stack-up/play" title="Stack Up" descriptor="1v1 · stack on your opponent." accent="blinkstackerduel" />
           </div>
         </section>
 

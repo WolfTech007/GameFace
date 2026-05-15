@@ -5,12 +5,12 @@ import LipReader from "@/components/LipReader";
 
 export default function CharadesPlayPage() {
   return (
-    <GamePlayEntrance introHref="/charades">
+    <GamePlayEntrance>
       {({ autoJoinPublicQueue, fromRandomMatch }) => (
         <LipReader
           autoJoinPublicQueue={autoJoinPublicQueue}
           fromRandomMatch={fromRandomMatch}
-          introHref="/charades"
+          introSlug="charades"
         />
       )}
     </GamePlayEntrance>

@@ -21,6 +21,8 @@ import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/r
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
+import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -29,9 +31,6 @@ type Phase = "intro" | "queue" | "peer_setup" | "lobby" | "playing" | "ended";
 type Role = "host" | "guest";
 
 const QUEUE_POLL_MS = 600;
-
-/** Landing page (rules + Find Match) when returning from `/facecard/play`. */
-const DEFAULT_FACECARD_INTRO_HREF = "/facecard";
 
 /** Exponential smoothing so note cards stick to the forehead like a lightweight AR filter. */
 function smoothForehead(
@@ -84,13 +83,13 @@ type EndPayload =
 export type FaceCardProps = {
   autoJoinPublicQueue?: boolean;
   fromRandomMatch?: boolean;
-  introHref?: string;
+  introSlug?: GameIntroSlug;
 };
 
 export default function FaceCard({
   autoJoinPublicQueue = false,
   fromRandomMatch = false,
-  introHref,
+  introSlug,
 }: FaceCardProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
@@ -399,7 +398,10 @@ export default function FaceCard({
   function leaveMatch() {
     void leaveQueue();
     cleanupPeer();
-    router.push(introHref ?? DEFAULT_FACECARD_INTRO_HREF);
+    setPhase("intro");
+    setStatus("");
+    setOpponentName("");
+    setOpponentLeftMatch(false);
   }
 
   function returnToArcade() {
@@ -587,6 +589,11 @@ export default function FaceCard({
     setPhase("lobby");
   }
 
+  useEffect(() => {
+    if (phase !== "intro") return;
+    void ensureCamera();
+  }, [phase]);
+
   useConsumePendingMatch("facecard", (p) => {
     void applyMatch(p.peerRoomId, p.role, "");
   });
@@ -629,7 +636,8 @@ export default function FaceCard({
       pollTimerRef.current = null;
     }
     await leaveQueue();
-    router.push(introHref ?? DEFAULT_FACECARD_INTRO_HREF);
+    setPhase("intro");
+    setStatus("");
   }
 
   function toggleReady() {
@@ -821,10 +829,10 @@ export default function FaceCard({
   const displayLocalName = profile.displayName.trim() || "Guest";
   const displayRemoteName = opponentName?.trim() || "Connecting";
 
-  /** Intro with Find Match — only on the legacy in-component intro (not GameIntro / random match). */
-  const showLegacyIntro =
-    (phase === "intro" || (phase === "queue" && !fromRandomMatch)) && !autoJoinPublicQueue;
+  const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY.facecard;
+
   const showGame =
+    phase === "intro" ||
     phase === "peer_setup" ||
     phase === "lobby" ||
     phase === "playing" ||
@@ -838,25 +846,37 @@ export default function FaceCard({
 
   return (
     <div className={styles.root}>
-      {showLegacyIntro ? (
-        <div className={styles.intro}>
-          <div className={styles.bigTitle}>FaceCard</div>
-          <div className={styles.tagline}>Guess who you are.</div>
+      {phase === "intro" ? (
+        <GameIntroOverlay
+          placement="viewport"
+          accent={introCfg.accent}
+          gameTitle={introCfg.title}
+          howToPlayText={introCfg.description}
+          onFindMatch={() => void findMatch()}
+          onChallengeFriend={() => router.push("/friends")}
+          onGoHome={() => router.push("/")}
+        />
+      ) : null}
 
-          <div className={styles.menuHint}>
-            Playing as <strong>{displayLocalName}</strong>
+      {phase === "queue" && !autoJoinPublicQueue && !fromRandomMatch ? (
+        <div className={gp.fullOverlay}>
+          <div className={gp.glassPanel}>
+            <p className={gp.resultKicker}>Face card</p>
+            <p className={gp.resultTitle} style={{ fontSize: "clamp(20px, 5vw, 26px)", marginTop: "6px" }}>
+              Finding a player…
+            </p>
+            <p className={gp.resultDetail} style={{ marginTop: "10px", textAlign: "center" }}>
+              {status || "Hang tight — pairing you with the next available player."}
+            </p>
+            <button
+              type="button"
+              className={gp.surfacePillGhost}
+              style={{ marginTop: "18px", width: "100%" }}
+              onClick={() => void cancelQueueSearch()}
+            >
+              Cancel
+            </button>
           </div>
-
-          <button
-            type="button"
-            className={styles.primaryBtn}
-            onClick={() => void findMatch()}
-            disabled={phase === "queue"}
-          >
-            Find Match
-          </button>
-
-          <div className={styles.statusText}>{status}</div>
         </div>
       ) : null}
 

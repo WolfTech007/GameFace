@@ -5,12 +5,12 @@ import StaringContest from "@/components/StaringContest";
 
 export default function StaringContestPlayPage() {
   return (
-    <GamePlayEntrance introHref="/staring-contest">
+    <GamePlayEntrance>
       {({ autoJoinPublicQueue, fromRandomMatch }) => (
         <StaringContest
           autoJoinPublicQueue={autoJoinPublicQueue}
           fromRandomMatch={fromRandomMatch}
-          introHref="/staring-contest"
+          introSlug="staring-contest"
         />
       )}
     </GamePlayEntrance>

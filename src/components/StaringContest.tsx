@@ -23,6 +23,8 @@ import { emptyRematchIntent, rematchBothWant, type RematchIntent } from "@/lib/r
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { useConsumePendingMatch } from "@/hooks/useConsumePendingMatch";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
+import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
+import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -45,13 +47,10 @@ const QUEUE_POLL_MS = 600;
 const VIDEO_DEBUG =
   typeof process !== "undefined" && process.env.NODE_ENV === "development";
 
-/** Landing page (rules + Find Match) when returning from `/staring-contest/play`. */
-const DEFAULT_STARING_INTRO_HREF = "/staring-contest";
-
 export type StaringContestProps = {
   autoJoinPublicQueue?: boolean;
   fromRandomMatch?: boolean;
-  introHref?: string;
+  introSlug?: GameIntroSlug;
 };
 
 function sleep(ms: number) {
@@ -100,7 +99,7 @@ function median(nums: number[]) {
 export default function StaringContest({
   autoJoinPublicQueue = false,
   fromRandomMatch: _fromRandomMatch = false,
-  introHref,
+  introSlug,
 }: StaringContestProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
@@ -383,8 +382,14 @@ export default function StaringContest({
       pollTimerRef.current = null;
     }
     await leaveQueue();
-    router.push(introHref ?? DEFAULT_STARING_INTRO_HREF);
+    setPhase("intro");
+    setStatus("");
   }
+
+  useEffect(() => {
+    if (phase !== "intro") return;
+    void ensureCamera();
+  }, [phase]);
 
   async function applyMatch(roomId: string, r: Role, opp: string) {
     setPeerRoomId(roomId);
@@ -499,7 +504,10 @@ export default function StaringContest({
   function leaveMatch() {
     void leaveQueue();
     cleanupPeer();
-    router.push(introHref ?? DEFAULT_STARING_INTRO_HREF);
+    setPhase("intro");
+    setStatus("");
+    setOpponentName(null);
+    setOpponentLeftMatch(false);
   }
 
   function returnToArcade() {
@@ -784,7 +792,10 @@ export default function StaringContest({
   const displayLocalName = profile.displayName.trim() || "Guest";
   const displayRemoteName = opponentName?.trim() || "Connecting";
 
+  const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY["staring-contest"];
+
   const showGameChrome =
+    phase === "intro" ||
     phase === "peer_setup" ||
     phase === "lobby" ||
     phase === "countdown" ||
@@ -793,25 +804,37 @@ export default function StaringContest({
 
   return (
     <div className={styles.root}>
-      {(phase === "intro" || phase === "queue") && !autoJoinPublicQueue ? (
-        <div className={styles.intro}>
-          <div className={styles.bigTitle}>Staring Contest</div>
-          <div className={styles.tagline}>Don&apos;t blink.</div>
+      {phase === "intro" ? (
+        <GameIntroOverlay
+          placement="viewport"
+          accent={introCfg.accent}
+          gameTitle={introCfg.title}
+          howToPlayText={introCfg.description}
+          onFindMatch={() => void findMatch()}
+          onChallengeFriend={() => router.push("/friends")}
+          onGoHome={() => router.push("/")}
+        />
+      ) : null}
 
-          <div className={styles.menuHint}>
-            Playing as <strong>{displayLocalName}</strong>
+      {phase === "queue" && !autoJoinPublicQueue ? (
+        <div className={gp.fullOverlay}>
+          <div className={gp.glassPanel}>
+            <p className={gp.resultKicker}>Staring contest</p>
+            <p className={gp.resultTitle} style={{ fontSize: "clamp(20px, 5vw, 26px)", marginTop: "6px" }}>
+              Finding a player…
+            </p>
+            <p className={gp.resultDetail} style={{ marginTop: "10px", textAlign: "center" }}>
+              {status || "Hang tight — we’ll drop you in as soon as someone is online."}
+            </p>
+            <button
+              type="button"
+              className={gp.surfacePillGhost}
+              style={{ marginTop: "18px", width: "100%" }}
+              onClick={() => void cancelQueueSearch()}
+            >
+              Cancel
+            </button>
           </div>
-
-          <button
-            type="button"
-            className={styles.primaryBtn}
-            onClick={() => void findMatch()}
-            disabled={phase === "queue"}
-          >
-            Find Match
-          </button>
-
-          <div className={styles.statusText}>{status}</div>
         </div>
       ) : null}
 

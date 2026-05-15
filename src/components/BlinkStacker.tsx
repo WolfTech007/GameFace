@@ -4,6 +4,8 @@ import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GFBottomNav } from "@/components/gameface/GFBottomNav";
+import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
+import { GAME_INTRO_REGISTRY } from "@/lib/gameface/gameIntroRegistry";
 import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
 import {
   BASE_SCORE_PER_LEVEL,
@@ -548,21 +550,17 @@ export default function BlinkStacker() {
           ) : null}
 
           {phase === "menu" ? (
-            <div className={styles.overlay}>
-              <p className={styles.overlayTitle}>Blink Stacker</p>
-              <p className={styles.overlayBody}>
-                Stack the tower. When the neon block lines up, <strong>blink</strong> to lock it in. If the
-                overlap is under half the moving block&apos;s width, you lose.
-              </p>
-              <div className={styles.actions}>
-                <button type="button" className={styles.primaryBtn} onClick={() => void startRun()}>
-                  Start game
-                </button>
-                <button type="button" className={styles.goHome} onClick={() => router.push("/")}>
-                  GO HOME
-                </button>
-              </div>
-            </div>
+            <GameIntroOverlay
+              placement="viewport"
+              accent={GAME_INTRO_REGISTRY["blink-stacker"].accent}
+              gameTitle={GAME_INTRO_REGISTRY["blink-stacker"].title}
+              howToPlayText={GAME_INTRO_REGISTRY["blink-stacker"].description}
+              findMatchLabel="START GAME"
+              showChallengeFriend
+              onFindMatch={() => void startRun()}
+              onChallengeFriend={() => router.push("/friends")}
+              onGoHome={() => router.push("/")}
+            />
           ) : null}
 
           {phase === "gameover" ? (

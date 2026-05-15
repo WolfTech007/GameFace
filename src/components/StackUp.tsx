@@ -18,6 +18,8 @@ import { combinedEar, createBlinkEdgeDetector } from "@/lib/blinkStacker/ear";
 import { layoutFromCanvasHeight } from "@/lib/blinkStacker/camera";
 import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud";
 import { GFBottomNav } from "@/components/gameface/GFBottomNav";
+import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
+import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
 import styles from "./StackUp.module.css";
 import type { GuestToHostStackUpMsg, HostToGuestStackUpMsg, StackUpNetState, StackUpSeg } from "@/lib/stackUp/netTypes";
@@ -35,7 +37,6 @@ import {
 } from "@/lib/stackUp/hostSim";
 
 const QUEUE_POLL_MS = 600;
-const DEFAULT_INTRO = "/stack-up";
 /** Edge detector cooldown — keep double-blink from firing two stops (target ~150–250ms). */
 const BLINK_COOLDOWN_MS = 200;
 const MIN_BRICK_PX = 40;
@@ -167,10 +168,10 @@ function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: Stack
 export type StackUpProps = {
   autoJoinPublicQueue?: boolean;
   fromRandomMatch?: boolean;
-  introHref?: string;
+  introSlug?: GameIntroSlug;
 };
 
-export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch = false, introHref }: StackUpProps) {
+export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch = false, introSlug }: StackUpProps) {
   const router = useRouter();
   const { profile } = useGameFaceProfile();
   const clientId = profile.userId;
@@ -408,7 +409,14 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
   function leaveMatch() {
     cleanup();
-    router.push(introHref ?? DEFAULT_INTRO);
+    const boot = createStackUpHostRuntime();
+    netRef.current = cloneStackUpState(boot.state);
+    setUiPhase("menu");
+    setRole(null);
+    setRoomId(null);
+    setOpponentConnected(false);
+    setOpponentLeftMatch(false);
+    setStatus("Idle");
   }
 
   function clearGuestOptimisticStop() {
@@ -864,6 +872,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     };
   }, [showArena, uiPhase, snapPhase, snapMatchEpoch]);
 
+  const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY["stack-up"];
   const showMenu = uiPhase === "menu";
   const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
@@ -896,7 +905,8 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       matchPollRef.current = null;
     }
     void leaveQueue();
-    router.push(introHref ?? DEFAULT_INTRO);
+    setUiPhase("menu");
+    setStatus("Idle");
   }
 
   function goHome() {
@@ -1001,31 +1011,32 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
           </div>
         ) : null}
 
-        {showMenu || showMatchmaking ? (
-          <div className={styles.menuWrap}>
-            <div className={styles.menuCard}>
-              <div className={styles.title}>Stack Up</div>
-              {showMatchmaking ? (
-                <>
-                  <p className={styles.sub}>Searching for an opponent…</p>
-                  <div className={styles.row}>
-                    <button type="button" className={styles.buttonSecondary} onClick={cancelMatchmaking}>
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className={styles.sub}>Take turns blinking to stop the moving block. First miss loses.</p>
-                  <div className={styles.row}>
-                    <button type="button" className={styles.button} onClick={() => void findMatch()}>
-                      Find Match
-                    </button>
-                  </div>
-                </>
-              )}
-              <p className={styles.status}>{status}</p>
-              {roomId ? <p className={styles.status}>Room: {roomId}</p> : null}
+        {showMenu && !showMatchmaking ? (
+          <GameIntroOverlay
+            placement="viewport"
+            accent={introCfg.accent}
+            gameTitle={introCfg.title}
+            howToPlayText={introCfg.description}
+            onFindMatch={() => void findMatch()}
+            onChallengeFriend={() => router.push("/friends")}
+            onGoHome={goHome}
+          />
+        ) : null}
+
+        {showMatchmaking ? (
+          <div className={styles.introLayer}>
+            <div className={styles.menuWrap}>
+              <div className={styles.menuCard}>
+                <div className={styles.title}>Stack Up</div>
+                <p className={styles.sub}>Searching for an opponent…</p>
+                <div className={styles.row}>
+                  <button type="button" className={styles.buttonSecondary} onClick={cancelMatchmaking}>
+                    Cancel
+                  </button>
+                </div>
+                <p className={styles.status}>{status}</p>
+                {roomId ? <p className={styles.status}>Room: {roomId}</p> : null}
+              </div>
             </div>
           </div>
         ) : null}
