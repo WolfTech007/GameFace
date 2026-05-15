@@ -83,6 +83,7 @@ export async function createPrivateRoomAsHost(
       .single();
 
     if (insErr) {
+      console.error("PRIVATE_ROOM_ERROR", insErr);
       if (insErr.code === "23505") continue;
       throw insErr;
     }
@@ -92,7 +93,10 @@ export async function createPrivateRoomAsHost(
       user_id: session.user.id,
       role: "host",
     });
-    if (pErr) throw pErr;
+    if (pErr) {
+      console.error("PRIVATE_ROOM_ERROR", pErr);
+      throw pErr;
+    }
 
     return { inviteCode, playPath, peerRoomId };
   }
@@ -106,7 +110,9 @@ export async function resolvePrivateInviteCode(
   const supabase = getSupabaseBrowserClient();
   const { data, error } = await supabase.rpc("join_private_room", { p_invite: inviteCode.trim() });
   if (error) {
-    return { ok: false, error: error.message || "rpc_error" };
+    console.error("PRIVATE_ROOM_ERROR", error);
+    const codePart = error.code != null && error.code !== "" ? ` (code: ${error.code})` : "";
+    return { ok: false, error: `${error.message || "rpc_error"}${codePart}` };
   }
   const parsed = parseJoinPrivateRoomResult(data);
   if (!parsed) return { ok: false, error: "bad_response" };
@@ -120,6 +126,15 @@ function challengeErrorMessage(e: unknown): string {
     if (typeof m === "string") return m;
   }
   return String(e);
+}
+
+/** Temporary debug — surfaces PostgREST-style `code` when present. */
+function supabaseErrorCode(e: unknown): string {
+  if (typeof e !== "object" || e === null || !("code" in e)) return "";
+  const c = (e as { code?: unknown }).code;
+  if (typeof c === "string") return c;
+  if (typeof c === "number" || typeof c === "boolean") return String(c);
+  return "";
 }
 
 export async function startPrivateFriendChallenge(
@@ -142,13 +157,10 @@ export async function startPrivateFriendChallenge(
       router.push(`/login?redirect=${encodeURIComponent(path)}`);
       return;
     }
-    console.error(e);
-    const hint =
-      msg.includes("NEXT_PUBLIC_SUPABASE") || msg.includes("Missing NEXT_PUBLIC")
-        ? "Private matches need Supabase keys in .env.local (NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY)."
-        : /relation|does not exist|schema cache/i.test(msg)
-          ? "Private match tables are missing — run the Supabase migration that creates private_rooms and join_private_room."
-          : `Could not create a private room: ${msg}`;
-    window.alert(hint);
+    console.error("PRIVATE_ROOM_ERROR", e);
+    const code = supabaseErrorCode(e);
+    window.alert(
+      `PRIVATE ROOM DEBUG (temporary)\nmessage: ${msg}\ncode: ${code.length ? code : "(none)"}`,
+    );
   }
 }
