@@ -212,6 +212,7 @@ export default function BlinkStackerDuel({
   );
   const [opponentConnected, setOpponentConnected] = useState(false);
   const [opponentLeftMatch, setOpponentLeftMatch] = useState(false);
+  const [remoteVideoLive, setRemoteVideoLive] = useState(false);
 
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
@@ -322,6 +323,7 @@ export default function BlinkStackerDuel({
     hostRtRef.current = null;
     landmarkerRef.current = null;
     blinkDetRef.current = null;
+    setRemoteVideoLive(false);
   }
 
   function sendToHost(msg: GuestToHostDuelMsg) {
@@ -564,6 +566,7 @@ export default function BlinkStackerDuel({
       log("peer data channel closed (host)");
       setOpponentConnected(false);
       setOpponentLeftMatch(true);
+      setRemoteVideoLive(false);
     });
 
     const onDataOpen = () => {
@@ -623,6 +626,7 @@ export default function BlinkStackerDuel({
       log("peer data channel closed (guest)");
       setOpponentConnected(false);
       setOpponentLeftMatch(true);
+      setRemoteVideoLive(false);
     });
 
     const call = peer.call(rid, stream);
@@ -991,12 +995,26 @@ export default function BlinkStackerDuel({
                 }}
               >
                 <div className={styles.remoteShell}>
-                  <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
+                  <video
+                    ref={remoteVideoRef}
+                    className={`${styles.remote} ${remoteVideoLive ? styles.remoteLive : styles.remoteHidden}`}
+                    playsInline
+                    autoPlay
+                    muted
+                    onLoadedData={() => setRemoteVideoLive(true)}
+                    onPlaying={() => setRemoteVideoLive(true)}
+                    onEmptied={() => setRemoteVideoLive(false)}
+                    onPause={() => setRemoteVideoLive(false)}
+                  />
                 </div>
                 <canvas ref={canvasRef} className={styles.overlayCanvas} />
                 <div className={styles.pip}>
                   <video ref={pipVideoRef} className={styles.pipInner} playsInline muted autoPlay />
                 </div>
+
+                {net.phase !== "gameover" ? (
+                  <div className={styles.ruleStrip}>TAKE TURNS BLINKING OR TAPPING TO STOP. FIRST MISS LOSES.</div>
+                ) : null}
 
                 {net.phase === "countdown" ? (
                   <div className={styles.layerUi}>

@@ -83,7 +83,21 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #050508;
+  background:
+    radial-gradient(130% 80% at 50% 10%, rgba(56, 189, 248, 0.22), rgba(3, 6, 14, 0.95) 46%, rgba(1, 2, 7, 0.98)),
+    linear-gradient(135deg, rgba(251, 81, 81, 0.16), rgba(56, 189, 248, 0.14));
+}
+
+.remoteShell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 25% 30%, rgba(56, 189, 248, 0.25), transparent 40%),
+    radial-gradient(circle at 70% 65%, rgba(251, 81, 81, 0.2), transparent 45%);
+  animation: arenaPulse 4.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .remote {
@@ -98,6 +112,16 @@
   object-fit: cover;
   object-position: center center;
   -webkit-transform: translate(-50%, -50%) scaleX(-1);
+  z-index: 1;
+  transition: opacity 180ms ease;
+}
+
+.remoteHidden {
+  opacity: 0;
+}
+
+.remoteLive {
+  opacity: 1;
 }
 
 .overlayCanvas {
@@ -112,15 +136,17 @@
 .pip {
   position: absolute;
   right: 10px;
-  bottom: calc(var(--safe-bottom, 0px) + 10px);
-  width: 22%;
-  max-width: 110px;
-  aspect-ratio: 3 / 4;
-  border-radius: 12px;
+  top: calc(var(--safe-top, 0px) + 50px);
+  width: clamp(64px, 16vw, 88px);
+  aspect-ratio: 9 / 14;
+  border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-  z-index: 5;
+  border: 1px solid rgba(56, 189, 248, 0.52);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 18px rgba(56, 189, 248, 0.38),
+    0 8px 22px rgba(0, 0, 0, 0.55);
+  z-index: 7;
 }
 
 .pipInner {
@@ -149,6 +175,34 @@
   justify-content: center;
   text-align: center;
   padding: 16px;
+}
+
+.ruleStrip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-bottom, 0px) + 14px);
+  transform: translateX(-50%);
+  z-index: 8;
+  max-width: min(94vw, 560px);
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  background: rgba(2, 6, 16, 0.72);
+  color: rgba(226, 242, 255, 0.97);
+  font-size: clamp(10px, 2.7vw, 12px);
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.2;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.2);
+  pointer-events: none;
+}
+
+@keyframes arenaPulse {
+  0% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.55; }
+  50% { transform: scale(1.06) translate3d(-2%, 2%, 0); opacity: 0.8; }
+  100% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.55; }
 }
 
 .layerUi button {
