@@ -203,8 +203,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const lastBrickEpochStoppedRef = useRef(-1);
   const lastSeenBrickEpochRef = useRef(-1);
   const lastLoopRef = useRef<number | null>(null);
-  const turnStartAtRef = useRef(0);
-  const lastHintBrickEpochRef = useRef(-1);
   const hideHintUntilRef = useRef(0);
   const reduceMotionRef = useRef(false);
   const canvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -219,6 +217,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const landmarkerRef = useRef<Awaited<ReturnType<typeof createFaceLandmarker>> | null>(null);
   const blinkDetRef = useRef<ReturnType<typeof createBlinkEdgeDetector> | null>(null);
   const guestBrickEpochRef = useRef(0);
+  const [centerInstrOpacity, setCenterInstrOpacity] = useState(0);
 
   const [, bumpUi] = useReducer((x: number) => x + 1, 0);
   const lastGuestUiBumpRef = useRef(0);
@@ -318,6 +317,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     blinkDetRef.current = null;
     pendingRemoteStreamRef.current = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    setCenterInstrOpacity(0);
   }
 
   function sendToHost(msg: GuestToHostStackUpMsg) {
@@ -730,10 +730,6 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
       if (!canvas || !ctx) return;
       const ds = getDrawState();
-      if (ds.brickEpoch !== lastHintBrickEpochRef.current) {
-        lastHintBrickEpochRef.current = ds.brickEpoch;
-        turnStartAtRef.current = performance.now();
-      }
       drawScene(ctx, w, h, ds);
     };
     raf = requestAnimationFrame(loop);
@@ -767,6 +763,19 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     return () => window.clearInterval(id);
   }, [showArena]);
 
+  const snapPhase = getDrawState().phase;
+  const snapMatchEpoch = getDrawState().matchEpoch ?? 0;
+  useEffect(() => {
+    if (!showArena || uiPhase === "lobby") return;
+    if (snapPhase !== "moving") return;
+    setCenterInstrOpacity(1);
+    const id = window.setTimeout(() => setCenterInstrOpacity(0), 3000);
+    return () => {
+      window.clearTimeout(id);
+      setCenterInstrOpacity(0);
+    };
+  }, [showArena, uiPhase, snapPhase, snapMatchEpoch]);
+
   const showMenu = uiPhase === "menu";
   const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
@@ -779,15 +788,17 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const sharedScore = Math.max(0, net.tower.length - 1);
   const readyHost = role === "host" ? hostRtRef.current?.state.ready.host ?? false : netRef.current.ready.host;
   const readyGuest = role === "host" ? hostRtRef.current?.state.ready.guest ?? false : netRef.current.ready.guest;
-  const initialTurnHint = net.phase === "moving" && net.brickEpoch <= 3;
-  const staleTurnHint =
-    net.phase === "moving" &&
-    myTurn &&
-    net.brickEpoch > 3 &&
-    performance.now() - turnStartAtRef.current > 4000 &&
-    performance.now() > hideHintUntilRef.current;
-  const showFloatingTurnHint = initialTurnHint || staleTurnHint;
-  const floatingTurnText = myTurn ? (staleTurnHint ? "YOUR TURN — BLINK" : "YOUR TURN") : "OPPONENT'S TURN";
+  const showFrameHud = showArena && uiPhase !== "lobby" && net.phase !== "lobby";
+  const frameHudCenter =
+    net.phase === "moving"
+      ? myTurn
+        ? "YOUR TURN"
+        : "OPPONENT TURN"
+      : net.phase === "countdown"
+        ? "GET READY"
+        : net.phase === "gameover"
+          ? "GAME OVER"
+          : "";
 
   function cancelMatchmaking() {
     if (matchPollRef.current) {
@@ -809,6 +820,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
       <GameplayDuelHud
         gameBadge="STACK UP"
+        hideCenterBadge
         opponent={{
           displayName: showMatchmaking ? "Finding match" : opponentConnected ? "Opponent" : "Arena",
           username: showMatchmaking ? "" : opponentConnected ? "rival" : "",
@@ -821,73 +833,78 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
         }}
       />
 
-      <header className={styles.topBar}>
-        <span className={styles.brand}>STACK UP</span>
-        {showArena && uiPhase !== "lobby" ? (
-          <div className={styles.topHud}>
-            <div className={styles.scorePill}>SCORE {sharedScore}</div>
-            <div className={`${styles.turnPill} ${myTurn ? "" : styles.turnPillOpponent}`}>
-              {net.activeBlue ? "BLUE TURN" : "RED TURN"}
-            </div>
-          </div>
-        ) : (
-          <span />
-        )}
-      </header>
-
       <main className={styles.main}>
         {showArena ? (
-          <div
-            ref={stageRef}
-            className={styles.stage}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              tryStopRef.current();
-            }}
-          >
-            <div className={styles.remoteShell}>
-              <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
-            </div>
-            <canvas ref={canvasRef} className={styles.overlayCanvas} />
-            <div className={styles.pip}>
-              <video ref={pipVideoRef} className={styles.pipInner} playsInline muted autoPlay />
-            </div>
-
-            {net.phase !== "gameover" ? (
-              <div className={styles.ruleStrip}>TAKE TURNS BLINKING OR TAPPING TO STOP · FIRST MISS LOSES</div>
-            ) : null}
-
-            {net.phase === "countdown" ? (
-              <div className={styles.layerUi}>
-                <div className={styles.count}>{net.cd ?? 3}</div>
+          <div className={styles.stageFrame}>
+            <div
+              ref={stageRef}
+              className={styles.stage}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                tryStopRef.current();
+              }}
+            >
+              <div className={styles.remoteShell}>
+                <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
               </div>
-            ) : null}
+              <canvas ref={canvasRef} className={styles.overlayCanvas} />
 
-            {showFloatingTurnHint ? (
-              <div className={styles.hintOverlay}>
-                <div className={styles.hintPill}>
-                  <p className={styles.hintTitle}>{floatingTurnText}</p>
-                  {myTurn ? <p className={styles.hintSub}>BLINK TO STOP</p> : null}
+              <div
+                className={styles.centerInstruction}
+                style={{ opacity: centerInstrOpacity }}
+                aria-hidden
+              >
+                <p className={styles.centerInstructionLine}>TAKE TURNS BLINKING OR TAPPING TO STOP</p>
+                <p className={styles.centerInstructionLine}>FIRST MISS LOSES</p>
+              </div>
+
+              {showFrameHud ? (
+                <div className={styles.frameHud} aria-hidden>
+                  <div className={styles.frameHudSide}>
+                    <span className={styles.frameHudLabel}>OPP</span>
+                    <span className={styles.frameHudValue}>{sharedScore}</span>
+                  </div>
+                  <div
+                    className={`${styles.frameHudCenter} ${
+                      net.phase === "moving" && !myTurn ? styles.frameHudCenterOpp : ""
+                    }`}
+                  >
+                    {frameHudCenter}
+                  </div>
+                  <div className={`${styles.frameHudSide} ${styles.frameHudSideYou}`}>
+                    <span className={styles.frameHudLabel}>YOU</span>
+                    <span className={styles.frameHudValue}>{sharedScore}</span>
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {showGameOver && net.loser ? (
-              <div className={`${styles.layerUi} ${styles.layerUiInteractive}`}>
-                <div className={`${styles.focusCard} ${styles.focusCardInteractive}`}>
-                  <p className={styles.focusTitle}>{youWin ? "YOU WIN" : "YOU LOSE"}</p>
-                  <RematchBar
-                    iWantRematch={iAmBlue ? net.rematch.host : net.rematch.guest}
-                    theyWantRematch={iAmBlue ? net.rematch.guest : net.rematch.host}
-                    onRematch={requestRematch}
-                    onLeave={leaveMatch}
-                    opponentLeft={opponentLeftMatch}
-                    onReturnArcade={leaveMatch}
-                    onGoHome={goHome}
-                  />
-                </div>
+              <div className={styles.pip}>
+                <video ref={pipVideoRef} className={styles.pipInner} playsInline muted autoPlay />
               </div>
-            ) : null}
+
+              {net.phase === "countdown" ? (
+                <div className={styles.layerUi}>
+                  <div className={styles.count}>{net.cd ?? 3}</div>
+                </div>
+              ) : null}
+
+              {showGameOver && net.loser ? (
+                <div className={`${styles.layerUi} ${styles.layerUiInteractive}`}>
+                  <div className={`${styles.focusCard} ${styles.focusCardInteractive}`}>
+                    <p className={styles.focusTitle}>{youWin ? "YOU WIN" : "YOU LOSE"}</p>
+                    <RematchBar
+                      iWantRematch={iAmBlue ? net.rematch.host : net.rematch.guest}
+                      theyWantRematch={iAmBlue ? net.rematch.guest : net.rematch.host}
+                      onRematch={requestRematch}
+                      onLeave={leaveMatch}
+                      opponentLeft={opponentLeftMatch}
+                      onReturnArcade={leaveMatch}
+                      onGoHome={goHome}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : null}
 

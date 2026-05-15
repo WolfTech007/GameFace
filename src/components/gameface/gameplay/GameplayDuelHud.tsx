@@ -17,6 +17,8 @@ export type GameplayDuelHudProps = {
   you: DuelHudIdentity;
   /** FacePong arcade HUD — glass cards + gradient title; other games omit. */
   variant?: "default" | "facePong";
+  /** Hide the center game-title badge (Stack Up keeps player cards only). */
+  hideCenterBadge?: boolean;
 };
 
 function UsernameLine({ plain, align }: { plain: string; align: "start" | "end" }) {
@@ -33,7 +35,13 @@ function UsernameLine({ plain, align }: { plain: string; align: "start" | "end" 
   );
 }
 
-export function GameplayDuelHud({ gameBadge, opponent, you, variant = "default" }: GameplayDuelHudProps) {
+export function GameplayDuelHud({
+  gameBadge,
+  opponent,
+  you,
+  variant = "default",
+  hideCenterBadge = false,
+}: GameplayDuelHudProps) {
   const youOnline = you.online !== false;
   const oppOnline = opponent.online !== false;
   const fp = variant === "facePong";
@@ -55,9 +63,11 @@ export function GameplayDuelHud({ gameBadge, opponent, you, variant = "default" 
         </div>
       </div>
 
-      <div className={styles.center} aria-hidden>
-        <span className={`${styles.badge} ${fp ? styles.badgeFacePong : ""}`}>{gameBadge}</span>
-      </div>
+      {!hideCenterBadge ? (
+        <div className={styles.center} aria-hidden>
+          <span className={`${styles.badge} ${fp ? styles.badgeFacePong : ""}`}>{gameBadge}</span>
+        </div>
+      ) : null}
 
       <div className={`${styles.side} ${styles.sideYou} ${fp ? styles.sideFacePongYou : ""}`}>
         <div className={styles.avatar} aria-hidden />

@@ -9,67 +9,10 @@
   color: rgba(255, 255, 255, 0.96);
 }
 
-.topBar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: calc(var(--safe-top, 0px) + 8px) 12px 4px;
-  pointer-events: none;
-}
-
-.brand {
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.15em;
-  color: rgba(230, 236, 245, 0.9);
-  text-transform: uppercase;
-  text-shadow: 0 0 14px rgba(56, 189, 248, 0.35);
-}
-
-.turnPill {
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(56, 189, 248, 0.5);
-  background: rgba(5, 8, 18, 0.78);
-  box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);
-}
-
-.topHud {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.scorePill {
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 8px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(5, 8, 18, 0.72);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
-}
-
-.turnPillOpponent {
-  border-color: rgba(251, 113, 133, 0.55);
-  box-shadow: 0 0 16px rgba(251, 113, 133, 0.2);
-}
-
 .main {
   flex: 1 1 auto;
   min-height: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -77,14 +20,24 @@
   padding: 0;
 }
 
-.stage {
+.stageFrame {
   position: relative;
-  width: 100vw;
-  height: 100svh;
+  width: min(100vw, calc(100svh * 9 / 16));
+  height: min(100svh, calc(100vw * 16 / 9));
   max-width: 100vw;
   max-height: 100svh;
+  flex-shrink: 0;
+  margin: 0 auto;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   border: 2px solid rgba(56, 189, 248, 0.72);
+  border-radius: 4px;
   box-shadow:
     inset 0 0 80px rgba(2, 4, 8, 0.65),
     inset 0 0 80px rgba(56, 189, 248, 0.08),
@@ -136,11 +89,114 @@
   z-index: 2;
 }
 
+.centerInstruction {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+  padding: 18% 12% 22%;
+  pointer-events: none;
+  text-align: center;
+  transition: opacity 0.55s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .centerInstruction {
+    transition: none;
+  }
+}
+
+.centerInstructionLine {
+  margin: 0;
+  max-width: 16ch;
+  font-size: clamp(13px, 3.8vw, 18px);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  color: rgba(248, 252, 255, 0.96);
+  text-shadow:
+    0 0 24px rgba(0, 0, 0, 0.95),
+    0 2px 14px rgba(0, 0, 0, 0.85),
+    0 0 20px rgba(56, 189, 248, 0.35);
+}
+
+.frameHud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--safe-top, 0px) + 6px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px 8px 14px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(2, 6, 14, 0.55), rgba(2, 6, 14, 0.12));
+}
+
+.frameHudSide {
+  flex: 0 1 30%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+}
+
+.frameHudSideYou {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.frameHudLabel {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(226, 236, 250, 0.55);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+}
+
+.frameHudValue {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.95);
+}
+
+.frameHudCenter {
+  flex: 0 1 40%;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.95);
+  text-shadow:
+    0 0 12px rgba(56, 189, 248, 0.45),
+    0 1px 8px rgba(0, 0, 0, 0.95);
+  white-space: nowrap;
+}
+
+.frameHudCenterOpp {
+  color: rgba(254, 202, 202, 0.96);
+  text-shadow:
+    0 0 12px rgba(251, 113, 133, 0.4),
+    0 1px 8px rgba(0, 0, 0, 0.95);
+}
+
 .pip {
   position: absolute;
   right: 10px;
-  top: calc(var(--safe-top, 0px) + 56px);
-  width: clamp(64px, 16vw, 88px);
+  top: calc(var(--safe-top, 0px) + 52px);
+  width: clamp(56px, 14vw, 80px);
   aspect-ratio: 9 / 14;
   border-radius: 10px;
   overflow: hidden;
@@ -149,7 +205,7 @@
     0 0 0 1px rgba(0, 0, 0, 0.35),
     0 0 16px rgba(56, 189, 248, 0.35),
     0 8px 22px rgba(0, 0, 0, 0.55);
-  z-index: 7;
+  z-index: 6;
 }
 
 .pipInner {
@@ -208,70 +264,12 @@
   color: rgba(224, 234, 248, 0.92);
 }
 
-.hintOverlay {
-  position: absolute;
-  top: calc(var(--safe-top, 0px) + 86px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9;
-  pointer-events: none;
-}
-
-.hintPill {
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: rgba(2, 7, 16, 0.52);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  text-align: center;
-  backdrop-filter: blur(6px);
-}
-
-.hintTitle {
-  margin: 0;
-  font-size: clamp(12px, 3vw, 15px);
-  font-weight: 850;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(232, 243, 255, 0.95);
-  text-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
-}
-
-.hintSub {
-  margin: 4px 0 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: rgba(201, 226, 245, 0.9);
-}
-
 .count {
   font-size: clamp(62px, 20vw, 118px);
   font-weight: 900;
   line-height: 1;
   font-family: var(--gf-font-display), Impact, system-ui, sans-serif;
   text-shadow: 0 0 34px rgba(56, 189, 248, 0.8);
-}
-
-.ruleStrip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(var(--safe-bottom, 0px) + 12px);
-  transform: translateX(-50%);
-  z-index: 8;
-  max-width: min(94vw, 560px);
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(56, 189, 248, 0.5);
-  background: rgba(2, 6, 16, 0.72);
-  color: rgba(226, 242, 255, 0.97);
-  font-size: clamp(10px, 2.7vw, 12px);
-  font-weight: 850;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-align: center;
-  line-height: 1.2;
-  box-shadow: 0 0 18px rgba(56, 189, 248, 0.2);
 }
 
 .menuWrap {
