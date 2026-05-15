@@ -5,7 +5,6 @@ import type { StackUpNetState, StackUpOwner } from "./netTypes";
 
 const BASE_WN = 0.7;
 const COUNTDOWN_TOTAL_MS = 3200;
-const TURN_BANNER_MS = 850;
 
 export type StackUpHostRuntime = {
   state: StackUpNetState;
@@ -77,20 +76,19 @@ export function hostTickTransitions(rt: StackUpHostRuntime, now: number) {
   }
   if (s.phase === "countdown" && s.cde != null && now >= s.cde) {
     rt.pendingCountdown = false;
-    s.phase = "turn_banner";
+    s.phase = "moving";
     s.banner = "GO";
-    s.tbe = now + TURN_BANNER_MS;
+    s.tbe = now + 550;
     s.cd = undefined;
     s.cde = undefined;
     s.activeBlue = true;
-    return;
-  }
-  if (s.phase === "turn_banner" && s.tbe != null && now >= s.tbe) {
-    s.phase = "moving";
-    s.tbe = undefined;
-    s.banner = null;
     s.vx = Math.random() < 0.5 ? 1 : -1;
     s.brickEpoch += 1;
+    return;
+  }
+  if (s.tbe != null && now >= s.tbe) {
+    s.tbe = undefined;
+    s.banner = null;
   }
 }
 
@@ -112,7 +110,7 @@ export function hostAdvanceMoving(s: StackUpNetState, dt: number, arenaW: number
 }
 
 export function hostUpdateCamera(s: StackUpNetState, dt: number, canvasH: number, reduceMotion: boolean) {
-  if (s.phase !== "moving" && s.phase !== "turn_banner" && s.phase !== "gameover" && s.phase !== "countdown") return;
+  if (s.phase !== "moving" && s.phase !== "gameover" && s.phase !== "countdown") return;
   const { h, floorY, blockH, gap, floatExtra } = layoutFromCanvasHeight(canvasH);
   const target = computeCameraTargetY({
     canvasH: h,
@@ -162,9 +160,11 @@ export function hostApplyStop(rt: StackUpHostRuntime, now: number): { miss: bool
   s.speedPx = Math.min(SPEED_MAX_PX, SPEED_BASE_PX + SPEED_PER_LEVEL_PX * (s.tower.length - 1));
   s.activeBlue = !s.activeBlue;
   s.level = s.tower.length;
-  s.phase = "turn_banner";
-  s.banner = s.activeBlue ? "BLUE TURN" : "RED TURN";
-  s.tbe = now + TURN_BANNER_MS;
+  s.phase = "moving";
+  s.banner = null;
+  s.tbe = undefined;
+  s.vx = Math.random() < 0.5 ? 1 : -1;
+  s.brickEpoch += 1;
   s.fx = perfect ? { kind: "perfect", until: now + 650 } : null;
   return { miss: false, perfect };
 }

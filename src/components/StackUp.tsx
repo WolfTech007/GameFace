@@ -156,10 +156,6 @@ function drawScene(ctx: CanvasRenderingContext2D, w: number, h: number, s: Stack
     const bw = Math.max(MIN_BRICK_PX, s.mwn * arenaW);
     const x = arenaLeft + s.mcn * arenaW - bw / 2;
     const owner = s.activeBlue ? "blue" : "red";
-    for (let i = 1; i <= 4; i++) {
-      const trailX = x - s.vx * i * 12;
-      drawBrick(ctx, trailX, floatBottom - blockH, bw, blockH, owner, { alpha: 0.12 / i });
-    }
     drawBrick(ctx, x, floatBottom - blockH, bw, blockH, owner, { hot: true, pulse: s.pulse });
   }
 
@@ -210,6 +206,9 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const lastSeenBrickEpochRef = useRef(-1);
   const lastLoopRef = useRef<number | null>(null);
   const lastStateRecvAtRef = useRef<number | null>(null);
+  const turnStartAtRef = useRef(0);
+  const lastHintBrickEpochRef = useRef(-1);
+  const hideHintUntilRef = useRef(0);
   const reduceMotionRef = useRef(false);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -224,6 +223,20 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const [, bumpUi] = useReducer((x: number) => x + 1, 0);
   const lastGuestUiBumpRef = useRef(0);
   const lastHostUiBumpRef = useRef(0);
+
+  function attachRemoteStream(stream: MediaStream) {
+    const local = localStreamRef.current;
+    const localTrackId = local?.getVideoTracks?.()[0]?.id;
+    const remoteTrackId = stream.getVideoTracks?.()[0]?.id;
+    if ((local && stream.id === local.id) || (localTrackId && remoteTrackId && localTrackId === remoteTrackId)) {
+      log("ignoring local stream assigned as remote");
+      return;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stream;
+      void remoteVideoRef.current.play();
+    }
+  }
 
   function maybeBumpGuestUi(force = false) {
     const t = nowMs();
@@ -419,6 +432,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
     if (!myTurn) return;
     if (det.tick(ear, ts)) {
+      hideHintUntilRef.current = performance.now() + 1200;
       if (roleRef.current === "host") hostHandleLocalStop();
       else trySendGuestStop();
     }
@@ -442,6 +456,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     const iAmBlue = roleRef.current === "host";
     const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
     if (!myTurn) return;
+    hideHintUntilRef.current = performance.now() + 1200;
     if (roleRef.current === "host") hostHandleLocalStop();
     else trySendGuestStop();
   };
@@ -463,10 +478,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     peer.on("call", (call: any) => {
       call.answer(stream);
       call.on("stream", (remoteStream: MediaStream) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          void remoteVideoRef.current.play();
-        }
+        attachRemoteStream(remoteStream);
       });
     });
 
@@ -546,18 +558,12 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
     const call = peer.call(rid, stream);
     call.on("stream", (remoteStream: MediaStream) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        void remoteVideoRef.current.play();
-      }
+      attachRemoteStream(remoteStream);
     });
 
     guestAnswerCalls(peer as never, stream, (incoming) => {
       incoming.on("stream", (remoteStream: MediaStream) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          void remoteVideoRef.current.play();
-        }
+        attachRemoteStream(remoteStream);
       });
     });
   }
@@ -698,7 +704,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
         const now = nowMs();
         const phaseBeforeTick = s.phase;
         hostTickTransitions(rt, now);
-        if ((s.phase === "countdown" || s.phase === "turn_banner" || s.phase === "moving" || s.phase === "gameover") && uiPhaseRef.current === "lobby") {
+        if ((s.phase === "countdown" || s.phase === "moving" || s.phase === "gameover") && uiPhaseRef.current === "lobby") {
           setUiPhase("playing");
         }
         if (s.phase === "countdown" && s.cde != null) s.cd = countdownSecondsLeft(now, s.cde);
@@ -706,7 +712,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
         hostUpdateCamera(s, dt, h, reduceMotionRef.current);
         if (s.fx && now > s.fx.until) s.fx = null;
         if (s.phase === "gameover" && uiPhaseRef.current !== "gameover") setUiPhase("gameover");
-        if (s.phase === "moving" || s.phase === "turn_banner" || s.phase === "gameover" || s.phase === "countdown") {
+        if (s.phase === "moving" || s.phase === "gameover" || s.phase === "countdown") {
           if (phaseBeforeTick === "lobby") {
             lastPlayBroadcastMsRef.current = now;
             broadcastAuthoritativeState();
@@ -727,6 +733,10 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
       visionStep(ts);
       if (!canvas || !ctx) return;
       const ds = getDrawState();
+      if (ds.brickEpoch !== lastHintBrickEpochRef.current) {
+        lastHintBrickEpochRef.current = ds.brickEpoch;
+        turnStartAtRef.current = performance.now();
+      }
       if (roleRef.current === "guest" && ds.phase === "moving") {
         const recvAt = lastStateRecvAtRef.current;
         if (recvAt != null) {
@@ -766,8 +776,18 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
   const iAmBlue = role === "host";
   const myTurn = net.phase === "moving" && ((net.activeBlue && iAmBlue) || (!net.activeBlue && !iAmBlue));
   const youWin = net.phase === "gameover" && net.loser && ((net.loser === "red" && iAmBlue) || (net.loser === "blue" && !iAmBlue));
+  const sharedScore = Math.max(0, net.tower.length - 1);
   const readyHost = role === "host" ? hostRtRef.current?.state.ready.host ?? false : netRef.current.ready.host;
   const readyGuest = role === "host" ? hostRtRef.current?.state.ready.guest ?? false : netRef.current.ready.guest;
+  const initialTurnHint = net.phase === "moving" && net.brickEpoch <= 3;
+  const staleTurnHint =
+    net.phase === "moving" &&
+    myTurn &&
+    net.brickEpoch > 3 &&
+    performance.now() - turnStartAtRef.current > 4000 &&
+    performance.now() > hideHintUntilRef.current;
+  const showFloatingTurnHint = initialTurnHint || staleTurnHint;
+  const floatingTurnText = myTurn ? (staleTurnHint ? "YOUR TURN — BLINK" : "YOUR TURN") : "OPPONENT'S TURN";
 
   function cancelMatchmaking() {
     if (matchPollRef.current) {
@@ -776,6 +796,11 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
     }
     void leaveQueue();
     router.push(introHref ?? DEFAULT_INTRO);
+  }
+
+  function goHome() {
+    cleanup();
+    router.push("/");
   }
 
   return (
@@ -798,9 +823,12 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
       <header className={styles.topBar}>
         <span className={styles.brand}>STACK UP</span>
-        {showArena && net.phase === "moving" ? (
-          <div className={`${styles.turnPill} ${myTurn ? "" : styles.turnPillOpponent}`}>
-            {myTurn ? "YOUR TURN · BLINK TO STOP" : "OPPONENT'S TURN"}
+        {showArena ? (
+          <div className={styles.topHud}>
+            <div className={styles.scorePill}>SCORE {sharedScore}</div>
+            <div className={`${styles.turnPill} ${myTurn ? "" : styles.turnPillOpponent}`}>
+              {net.activeBlue ? "BLUE TURN" : "RED TURN"}
+            </div>
           </div>
         ) : (
           <span />
@@ -845,26 +873,18 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
               </div>
             ) : null}
 
-            {net.phase === "turn_banner" && net.banner ? (
-              <div className={styles.layerUi}>
-                <div className={styles.focusCard}>
-                  <p className={styles.focusTitle}>{net.banner}</p>
-                </div>
-              </div>
-            ) : null}
-
-            {net.phase === "moving" ? (
-              <div className={styles.layerUi}>
-                <div className={styles.focusCard}>
-                  <p className={styles.focusTitle}>{myTurn ? "YOUR TURN" : "OPPONENT'S TURN"}</p>
-                  <p className={styles.focusSub}>{myTurn ? "BLINK TO STOP" : "WAIT"}</p>
+            {showFloatingTurnHint ? (
+              <div className={styles.hintOverlay}>
+                <div className={styles.hintPill}>
+                  <p className={styles.hintTitle}>{floatingTurnText}</p>
+                  {myTurn ? <p className={styles.hintSub}>BLINK TO STOP</p> : null}
                 </div>
               </div>
             ) : null}
 
             {showGameOver && net.loser ? (
-              <div className={styles.layerUi}>
-                <div className={styles.focusCard}>
+              <div className={`${styles.layerUi} ${styles.layerUiInteractive}`}>
+                <div className={`${styles.focusCard} ${styles.focusCardInteractive}`}>
                   <p className={styles.focusTitle}>{youWin ? "YOU WIN" : "YOU LOSE"}</p>
                   <RematchBar
                     iWantRematch={iAmBlue ? net.rematch.host : net.rematch.guest}
@@ -873,7 +893,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
                     onLeave={leaveMatch}
                     opponentLeft={opponentLeftMatch}
                     onReturnArcade={leaveMatch}
-                    onGoHome={() => router.push("/")}
+                    onGoHome={goHome}
                   />
                 </div>
               </div>
