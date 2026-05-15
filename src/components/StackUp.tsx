@@ -800,6 +800,8 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
 
   const net = getDrawState();
   const iAmBlue = role === "host";
+  /** Host plays blue bricks, guest plays red — rim matches your side. */
+  const youPlayBlueBricks = role !== "guest";
   const myTurn = net.phase === "moving" && ((net.activeBlue && iAmBlue) || (!net.activeBlue && !iAmBlue));
   const youWin = net.phase === "gameover" && net.loser && ((net.loser === "red" && iAmBlue) || (net.loser === "blue" && !iAmBlue));
   const sharedScore = Math.max(0, net.tower.length - 1);
@@ -857,13 +859,17 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
           <div className={styles.stageFrame}>
             <div
               ref={stageRef}
-              className={styles.stage}
+              className={`${styles.stage} ${youPlayBlueBricks ? styles.stageRimBlue : styles.stageRimRed}`}
               onPointerDown={(e) => {
                 e.preventDefault();
                 tryStopRef.current();
               }}
             >
-              <div className={styles.remoteShell}>
+              <div
+                className={
+                  youPlayBlueBricks ? styles.remoteShell : `${styles.remoteShell} ${styles.remoteShellRedBias}`
+                }
+              >
                 <video ref={remoteVideoRef} className={styles.remote} playsInline autoPlay muted />
               </div>
               <canvas ref={canvasRef} className={styles.overlayCanvas} />
@@ -894,7 +900,7 @@ export default function StackUp({ autoJoinPublicQueue = false, fromRandomMatch =
                 </div>
               ) : null}
 
-              <div className={styles.pip}>
+              <div className={`${styles.pip} ${youPlayBlueBricks ? styles.pipRimBlue : styles.pipRimRed}`}>
                 <video ref={pipVideoRef} className={styles.pipInner} playsInline muted autoPlay />
               </div>
 
