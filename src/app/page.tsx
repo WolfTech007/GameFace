@@ -64,6 +64,7 @@ export default function Page() {
               descriptor="1v1 · shared tower, blink to place."
               accent="blinkstackerduel"
             />
+            <GFGameCard href="/stack-up" title="Stack Up" descriptor="1v1 · stack on your opponent." accent="blinkstackerduel" />
           </div>
         </section>
 

@@ -1,5 +1,11 @@
 /** Routes under `/` that show the universal GameIntro (not the live arena). */
-export type GameIntroSlug = "charades" | "staring-contest" | "facepong" | "facecard" | "blink-stacker-duel";
+export type GameIntroSlug =
+  | "charades"
+  | "staring-contest"
+  | "facepong"
+  | "facecard"
+  | "blink-stacker-duel"
+  | "stack-up";
 
 export type GameIntroAccent = "charades" | "staring" | "facepong" | "facecard" | "blinkstackerduel";
 
@@ -54,5 +60,13 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
       "One shared tower — blue then red. Blink to stop your brick when it is your turn; under 50% overlap loses the duel.",
     accent: "blinkstackerduel",
     playPath: "/blink-stacker-duel/play",
+  },
+  "stack-up": {
+    slug: "stack-up",
+    title: "STACK UP",
+    description:
+      "Build a shared tower directly on your opponent's live camera feed. Take turns blinking to stop the moving block.",
+    accent: "blinkstackerduel",
+    playPath: "/stack-up/play",
   },
 };

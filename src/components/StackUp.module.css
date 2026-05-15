@@ -1,0 +1,316 @@
+.shell {
+  position: relative;
+  min-height: 100svh;
+  max-height: 100svh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #020204;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.topBar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: calc(var(--safe-top, 0px) + 8px) 12px 4px;
+  pointer-events: none;
+}
+
+.brand {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: rgba(230, 236, 245, 0.9);
+  text-transform: uppercase;
+  text-shadow: 0 0 14px rgba(56, 189, 248, 0.35);
+}
+
+.turnPill {
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  background: rgba(5, 8, 18, 0.78);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.2);
+}
+
+.turnPillOpponent {
+  border-color: rgba(251, 113, 133, 0.55);
+  box-shadow: 0 0 16px rgba(251, 113, 133, 0.2);
+}
+
+.main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100svh;
+  max-width: 100vw;
+  max-height: 100svh;
+  overflow: hidden;
+  border: 2px solid rgba(56, 189, 248, 0.72);
+  box-shadow:
+    inset 0 0 80px rgba(2, 4, 8, 0.65),
+    inset 0 0 80px rgba(56, 189, 248, 0.08),
+    0 0 38px rgba(56, 189, 248, 0.2);
+  touch-action: none;
+}
+
+.remoteShell {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(130% 80% at 50% 10%, rgba(56, 189, 248, 0.22), rgba(3, 6, 14, 0.95) 46%, rgba(1, 2, 7, 0.98)),
+    linear-gradient(135deg, rgba(251, 81, 81, 0.16), rgba(56, 189, 248, 0.14));
+}
+
+.remoteShell::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 25% 30%, rgba(56, 189, 248, 0.25), transparent 40%),
+    radial-gradient(circle at 70% 65%, rgba(251, 81, 81, 0.2), transparent 45%);
+  animation: arenaPulse 4.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.remote {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  transform: translate(-50%, -50%) scaleX(-1);
+  object-fit: cover;
+  object-position: center center;
+  z-index: 1;
+  transition: opacity 180ms ease;
+}
+
+.remoteHidden {
+  opacity: 0;
+}
+
+.remoteLive {
+  opacity: 1;
+}
+
+.overlayCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 2;
+}
+
+.pip {
+  position: absolute;
+  right: 10px;
+  top: calc(var(--safe-top, 0px) + 56px);
+  width: clamp(64px, 16vw, 88px);
+  aspect-ratio: 9 / 14;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(56, 189, 248, 0.54);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 0 16px rgba(56, 189, 248, 0.35),
+    0 8px 22px rgba(0, 0, 0, 0.55);
+  z-index: 7;
+}
+
+.pipInner {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.layerUi {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+}
+
+.focusCard {
+  padding: 16px 14px;
+  border-radius: 14px;
+  background: rgba(2, 7, 16, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(8px);
+}
+
+.focusTitle {
+  margin: 0;
+  font-size: clamp(26px, 8vw, 40px);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 0 22px rgba(56, 189, 248, 0.6);
+}
+
+.focusSub {
+  margin: 6px 0 0;
+  font-size: clamp(12px, 3vw, 14px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(224, 234, 248, 0.92);
+}
+
+.count {
+  font-size: clamp(62px, 20vw, 118px);
+  font-weight: 900;
+  line-height: 1;
+  font-family: var(--gf-font-display), Impact, system-ui, sans-serif;
+  text-shadow: 0 0 34px rgba(56, 189, 248, 0.8);
+}
+
+.ruleStrip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-bottom, 0px) + 12px);
+  transform: translateX(-50%);
+  z-index: 8;
+  max-width: min(94vw, 560px);
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  background: rgba(2, 6, 16, 0.72);
+  color: rgba(226, 242, 255, 0.97);
+  font-size: clamp(10px, 2.7vw, 12px);
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.2;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.2);
+}
+
+.menuWrap {
+  position: relative;
+  z-index: 4;
+  width: min(94vw, 420px);
+}
+
+.menuCard {
+  background: rgba(4, 6, 12, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 16px;
+  backdrop-filter: blur(12px);
+}
+
+.title {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sub {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.subMuted {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: rgba(160, 170, 190, 0.9);
+}
+
+.row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.button,
+.buttonReady {
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.button {
+  background: linear-gradient(180deg, #e0f2fe, #38bdf8);
+  color: #041018;
+}
+
+.buttonReady {
+  background: linear-gradient(180deg, #bbf7d0, #22c55e);
+  color: #041018;
+  box-shadow: 0 0 18px rgba(52, 211, 153, 0.35);
+}
+
+.buttonSecondary {
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: transparent;
+  color: rgba(226, 232, 240, 0.95);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.status {
+  margin-top: 10px;
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes arenaPulse {
+  0% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.55; }
+  50% { transform: scale(1.06) translate3d(-2%, 2%, 0); opacity: 0.8; }
+  100% { transform: scale(1) translate3d(0, 0, 0); opacity: 0.55; }
+}
