@@ -1,5 +1,6 @@
 "use client";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import React, {
   createContext,
   useCallback,
@@ -19,9 +20,65 @@ import {
 import { seedDemoActivity, seedDemoFriends } from "@/lib/gameface/socialStore";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
+async function mergeRemoteSessionIntoStore(
+  supabase: SupabaseClient,
+  userId: string | null,
+  setState: React.Dispatch<React.SetStateAction<GameFaceProfile>>,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  if (!userId) {
+    localStorage.removeItem(PROFILE_KEY);
+    const guest = ensureProfile();
+    seedDemoFriends(guest);
+    seedDemoActivity();
+    setState(guest);
+    return;
+  }
+
+  const { data: row, error } = await supabase
+    .from("profiles")
+    .select("username, display_name, avatar_url")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error || !row) {
+    updateProfile({ userId });
+    const refreshed = loadProfile();
+    if (refreshed) setState(refreshed);
+    return;
+  }
+
+  const uname = typeof row.username === "string" ? row.username : null;
+  if (uname?.length) {
+    const dn =
+      typeof row.display_name === "string" && row.display_name.trim().length
+        ? row.display_name
+        : uname;
+    const av =
+      typeof row.avatar_url === "string" && row.avatar_url.trim().length ? row.avatar_url : undefined;
+    updateProfile({
+      userId,
+      username: uname,
+      displayName: dn,
+      avatarUrl: av,
+    });
+  } else {
+    updateProfile({ userId });
+  }
+
+  const refreshed = loadProfile();
+  if (!refreshed) return;
+  seedDemoFriends(refreshed);
+  seedDemoActivity();
+  setState(refreshed);
+}
+
 type Ctx = {
   profile: GameFaceProfile;
   refresh: () => void;
+  /** Pull `profiles` for the current auth user and merge into React + localStorage immediately. */
+  refreshRemoteProfile: () => Promise<void>;
   setProfile: (patch: Partial<GameFaceProfile>) => void;
 };
 
@@ -52,75 +109,36 @@ export function GameFaceProfileProvider({ children }: { children: React.ReactNod
     setState(p);
   }, []);
 
+  const refreshRemoteProfile = useCallback(async () => {
+    try {
+      const supabase = getSupabaseBrowserClient();
+      const { data } = await supabase.auth.getSession();
+      await mergeRemoteSessionIntoStore(supabase, data.session?.user?.id ?? null, setState);
+    } catch {
+      /* missing env or offline */
+    }
+  }, []);
+
   useEffect(() => {
     let alive = true;
 
     try {
       const supabase = getSupabaseBrowserClient();
 
-      async function applySessionUser(userId: string | null) {
-        if (!alive || typeof window === "undefined") return;
-
-        if (!userId) {
-          localStorage.removeItem(PROFILE_KEY);
-          const guest = ensureProfile();
-          seedDemoFriends(guest);
-          seedDemoActivity();
-          setState(guest);
-          return;
-        }
-
-        const { data: row, error } = await supabase
-          .from("profiles")
-          .select("username, display_name, avatar_url")
-          .eq("id", userId)
-          .maybeSingle();
-
+      async function apply(userId: string | null) {
         if (!alive) return;
-
-        if (error || !row) {
-          updateProfile({ userId });
-          const refreshed = loadProfile();
-          if (refreshed) setState(refreshed);
-          return;
-        }
-
-        const uname = typeof row.username === "string" ? row.username : null;
-        if (uname?.length) {
-          const dn =
-            typeof row.display_name === "string" && row.display_name.trim().length
-              ? row.display_name
-              : uname;
-          const av =
-            typeof row.avatar_url === "string" && row.avatar_url.trim().length
-              ? row.avatar_url
-              : undefined;
-          updateProfile({
-            userId,
-            username: uname,
-            displayName: dn,
-            avatarUrl: av,
-          });
-        } else {
-          updateProfile({ userId });
-        }
-
-        const refreshed = loadProfile();
-        if (!refreshed) return;
-        seedDemoFriends(refreshed);
-        seedDemoActivity();
-        setState(refreshed);
+        await mergeRemoteSessionIntoStore(supabase, userId, setState);
       }
 
       supabase.auth.getSession().then(({ data }) => {
         if (!alive) return;
-        void applySessionUser(data.session?.user?.id ?? null);
+        void apply(data.session?.user?.id ?? null);
       });
 
       const {
         data: { subscription },
       } = supabase.auth.onAuthStateChange((_evt, session) => {
-        void applySessionUser(session?.user?.id ?? null);
+        void apply(session?.user?.id ?? null);
       });
 
       return () => {
@@ -149,7 +167,10 @@ export function GameFaceProfileProvider({ children }: { children: React.ReactNod
     setState(next);
   }, []);
 
-  const value = useMemo(() => ({ profile, refresh, setProfile }), [profile, refresh, setProfile]);
+  const value = useMemo(
+    () => ({ profile, refresh, refreshRemoteProfile, setProfile }),
+    [profile, refresh, refreshRemoteProfile, setProfile],
+  );
 
   return (
     <GameFaceProfileContext.Provider value={value}>{children}</GameFaceProfileContext.Provider>

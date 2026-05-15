@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { describeSignInError } from "@/lib/auth/authErrors";
+import { GFButton } from "@/components/gameface";
+import { describeSignInError, isUniqueViolation, normalizeUsername } from "@/lib/auth/authErrors";
+import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import styles from "./page.module.css";
 
@@ -11,6 +13,8 @@ function LoginFields() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectSafe = sanitizeRedirect(searchParams.get("redirect"));
+  const { refreshRemoteProfile } = useGameFaceProfile();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -59,11 +63,24 @@ function LoginFields() {
         .maybeSingle();
 
       if (!row?.username) {
-        router.replace("/signup/username");
+        const meta = user.user_metadata as Record<string, unknown> | undefined;
+        const raw = meta?.username;
+        const uname = typeof raw === "string" ? normalizeUsername(raw) : "";
+        if (uname.length >= 3 && /^[a-z0-9_]+$/.test(uname)) {
+          const { error: insErr } = await supabase.from("profiles").insert({ id: user.id, username: uname });
+          if (!insErr || isUniqueViolation(insErr)) {
+            await refreshRemoteProfile();
+            router.replace(redirectSafe);
+            router.refresh();
+            return;
+          }
+        }
+        router.replace("/signup?finish=1");
         router.refresh();
         return;
       }
 
+      await refreshRemoteProfile();
       router.replace(redirectSafe);
       router.refresh();
     } catch (err) {
@@ -114,11 +131,12 @@ function LoginFields() {
         </button>
       </form>
 
-      <div className={styles.linksRow}>
-        New here?{" "}
-        <button type="button" className={styles.inlineLinkGhost} onClick={() => router.push("/signup")}>
+      <p className={styles.linksRow}>New here?</p>
+
+      <div className={styles.authSecondaryWrap}>
+        <GFButton variant="ghost" className={styles.gfBtnBlock} onClick={() => router.push("/signup")}>
           Create account
-        </button>
+        </GFButton>
       </div>
 
       <Link href="/" className={styles.skip}>

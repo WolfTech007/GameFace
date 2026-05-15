@@ -41,3 +41,12 @@ export function validateUsernameFormat(raw: string): string | null {
   if (!/^[a-z0-9_]+$/.test(u)) return "Use letters, numbers, and underscores only.";
   return null;
 }
+
+/** Postgres / PostgREST unique violation */
+export function isUniqueViolation(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { code?: string; message?: string };
+  if (e.code === "23505") return true;
+  const m = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return m.includes("duplicate") || m.includes("unique constraint");
+}
