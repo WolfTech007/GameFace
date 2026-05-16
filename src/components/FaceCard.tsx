@@ -1,5 +1,6 @@
 "use client";
 
+import type { DataConnection } from "peerjs";
 import React, { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./FaceCard.module.css";
@@ -8,7 +9,7 @@ import {
   createGuestPeer,
   createHostRoom,
   guestAnswerCalls,
-  waitForHostConnection,
+  subscribeHostGuestDataConnections,
 } from "@/lib/peerRoom";
 import { createFaceLandmarker } from "@/lib/mediapipeFaceLandmarker";
 import { foreheadFromLandmarks, type ForeheadPlacement } from "@/lib/facecardForehead";
@@ -188,6 +189,7 @@ export default function FaceCard({
 
   const pollTimerRef = useRef<number | null>(null);
   const privateAppliedRef = useRef(false);
+  const hostGuestConnUnsubRef = useRef<(() => void) | null>(null);
 
   const sendNet = useCallback((msg: FaceCardNetMsg) => {
     const c = dataRef.current as { open?: boolean; send?: (m: FaceCardNetMsg) => void } | null;
@@ -225,6 +227,8 @@ export default function FaceCard({
       window.clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
+    hostGuestConnUnsubRef.current?.();
+    hostGuestConnUnsubRef.current = null;
     try {
       peerRef.current?.destroy?.();
     } catch {
@@ -350,6 +354,43 @@ export default function FaceCard({
     if (roleRef.current !== "host") return;
     if (phaseRef.current !== "ended") return;
     if (!rematchBothWant(rematchIntentRef.current)) return;
+
+    matchEpochRef.current += 1;
+    const epoch = matchEpochRef.current;
+    rematchIntentRef.current = emptyRematchIntent();
+    bumpRematchUi();
+
+    gameEndedRef.current = false;
+    hostSecretRef.current = null;
+    guestSecretRef.current = null;
+    remoteCardLabelRef.current = "";
+    startWallMsRef.current = null;
+    syncPhysicalGuesses(3, 3);
+    myGuessAttemptsRef.current = 0;
+    setTimerSec(0);
+    setEndPayload(null);
+    setGuessModalOpen(false);
+    setGuessInput("");
+    setToast(null);
+    setLocalReady(false);
+    setRemoteReady(false);
+    setPhase("lobby");
+
+    sendNet({ t: "fc_rematch_go", matchEpoch: epoch });
+    sendNet({
+      t: "fc_rematch_state",
+      host: false,
+      guest: false,
+      matchEpoch: epoch,
+    });
+    sendNet({ t: "fc_ready", ready: false });
+  }
+
+  /** Private room: guest opened a new data channel after leaving — return both to lobby without rematch bar. */
+  function hostForcePrivateReconnectLobbyAfterGuestReconnect() {
+    if (!privateInviteCode) return;
+    if (roleRef.current !== "host") return;
+    if (phaseRef.current !== "ended") return;
 
     matchEpochRef.current += 1;
     const epoch = matchEpochRef.current;
@@ -552,17 +593,46 @@ export default function FaceCard({
         });
       });
 
-      const conn = await waitForHostConnection(peer);
-      dataRef.current = conn;
-      setOpponentLeftMatch(false);
-      wireHost(conn);
+      let resolvedFirstConn = false;
+      await new Promise<DataConnection>((resolve, reject) => {
+        hostGuestConnUnsubRef.current?.();
+        hostGuestConnUnsubRef.current = subscribeHostGuestDataConnections(peer, (conn) => {
+          conn.on("error", (e: unknown) => reject(e));
+          const finish = () => {
+            const prev = dataRef.current;
+            const isReconnect = prev != null && prev !== conn;
+            if (prev && prev !== conn) {
+              try {
+                (prev as { removeAllListeners?: () => void }).removeAllListeners?.();
+              } catch {
+                /* ignore */
+              }
+            }
 
-      conn.on("close", () => {
-        setOpponentLeftMatch(true);
-      });
+            dataRef.current = conn;
+            if (isReconnect && privateInviteCode && phaseRef.current === "ended") {
+              hostForcePrivateReconnectLobbyAfterGuestReconnect();
+            }
 
-      conn.on("open", () => {
-        sendNet({ t: "fc_hello", displayName: nameRef.current || "Player" });
+            setOpponentLeftMatch(false);
+            wireHost(conn);
+
+            conn.on("close", () => {
+              setOpponentLeftMatch(true);
+            });
+
+            conn.on("open", () => {
+              sendNet({ t: "fc_hello", displayName: nameRef.current || "Player" });
+            });
+
+            if (!resolvedFirstConn) {
+              resolvedFirstConn = true;
+              resolve(conn);
+            }
+          };
+          if (conn.open) finish();
+          else conn.on("open", finish);
+        });
       });
     } else {
       const peer = await createGuestPeer();

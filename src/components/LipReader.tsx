@@ -1,5 +1,6 @@
 "use client";
 
+import type { DataConnection } from "peerjs";
 import React, { useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./LipReader.module.css";
@@ -8,7 +9,7 @@ import {
   createGuestPeer,
   createHostRoom,
   guestAnswerCalls,
-  waitForHostConnection,
+  subscribeHostGuestDataConnections,
 } from "@/lib/peerRoom";
 import {
   cloneLipReaderState,
@@ -116,6 +117,7 @@ export default function LipReader({
   const dataRef = useRef<any>(null);
   const matchPollRef = useRef<number | null>(null);
   const privateAppliedRef = useRef(false);
+  const hostGuestConnUnsubRef = useRef<(() => void) | null>(null);
   const scheduledTimersRef = useRef<number[]>([]);
 
   /** Host: full authoritative state. Guest: redacted copy from host (no secret when guesser). */
@@ -196,6 +198,8 @@ export default function LipReader({
       matchPollRef.current = null;
     }
     void leaveQueue();
+    hostGuestConnUnsubRef.current?.();
+    hostGuestConnUnsubRef.current = null;
     if (peerRef.current) {
       try {
         peerRef.current.destroy();
@@ -457,46 +461,84 @@ export default function LipReader({
       });
     });
 
-    const conn = await waitForHostConnection(peer);
-    dataRef.current = conn;
-    setOpponentConnected(true);
-    setOpponentLeftMatch(false);
-    setStatus("Teammate connected");
+    let resolvedFirstConn = false;
+    await new Promise<DataConnection>((resolve, reject) => {
+      hostGuestConnUnsubRef.current?.();
+      hostGuestConnUnsubRef.current = subscribeHostGuestDataConnections(peer, (conn) => {
+        conn.on("error", (e: unknown) => reject(e));
+        const finish = () => {
+          const prev = dataRef.current;
+          const isReconnect = prev != null && prev !== conn;
+          if (prev && prev !== conn) {
+            try {
+              (prev as { removeAllListeners?: () => void }).removeAllListeners?.();
+            } catch {
+              /* ignore */
+            }
+          }
 
-    conn.on("data", (raw: unknown) => {
-      const msg = raw as GuestToHostLipMsg;
-      const s = gameStateRef.current;
-      if (msg.t === "lr_name") {
-        s.guestName = msg.name.slice(0, 24);
-        broadcastToGuest();
-      } else if (msg.t === "lr_ready_lobby") {
-        s.readyLobbyGuest = msg.ready;
-        broadcastToGuest();
-        queueMicrotask(() => hostTryStartFromLobby());
-      } else if (msg.t === "lr_skip") {
-        if (s.phase !== "playing") return;
-        hostHandleSkip();
-      } else if (msg.t === "lr_play_again") {
-        s.sessionRematch.guest = msg.want;
-        broadcastToGuest();
-        queueMicrotask(() => hostTryApplyPlayAgain());
-      } else if (msg.t === "lr_guess") {
-        // Guest guesses iff host is communicator (same as iAmGuesser for guest).
-        const guestIsGuesser = s.communicatorIsHost === true;
-        if (!guestIsGuesser) return;
-        if (s.phase !== "playing") return;
-        if (msg.roundId !== s.roundId) return;
-        hostHandleGuess(msg.text);
-      }
-    });
+          if (
+            isReconnect &&
+            privateInviteCode &&
+            roleRef.current === "host" &&
+            gameStateRef.current.phase === "session_complete"
+          ) {
+            clearScheduledTimers();
+            const hn = gameStateRef.current.hostName || nameRef.current.slice(0, 24);
+            const nextEpoch = (gameStateRef.current.sessionEpoch ?? 0) + 1;
+            gameStateRef.current = initialLipReaderState();
+            gameStateRef.current.hostName = hn;
+            gameStateRef.current.sessionEpoch = nextEpoch;
+            setOpponentLeftMatch(false);
+          }
 
-    conn.on("close", () => {
-      setOpponentConnected(false);
-      setOpponentLeftMatch(true);
-    });
+          dataRef.current = conn;
+          setOpponentConnected(true);
+          setOpponentLeftMatch(false);
+          setStatus("Teammate connected");
 
-    conn.on("open", () => {
-      broadcastToGuest();
+          conn.on("data", (raw: unknown) => {
+            const msg = raw as GuestToHostLipMsg;
+            const s = gameStateRef.current;
+            if (msg.t === "lr_name") {
+              s.guestName = msg.name.slice(0, 24);
+              broadcastToGuest();
+            } else if (msg.t === "lr_ready_lobby") {
+              s.readyLobbyGuest = msg.ready;
+              broadcastToGuest();
+              queueMicrotask(() => hostTryStartFromLobby());
+            } else if (msg.t === "lr_skip") {
+              if (s.phase !== "playing") return;
+              hostHandleSkip();
+            } else if (msg.t === "lr_play_again") {
+              s.sessionRematch.guest = msg.want;
+              broadcastToGuest();
+              queueMicrotask(() => hostTryApplyPlayAgain());
+            } else if (msg.t === "lr_guess") {
+              const guestIsGuesser = s.communicatorIsHost === true;
+              if (!guestIsGuesser) return;
+              if (s.phase !== "playing") return;
+              if (msg.roundId !== s.roundId) return;
+              hostHandleGuess(msg.text);
+            }
+          });
+
+            conn.on("close", () => {
+              setOpponentConnected(false);
+              setOpponentLeftMatch(true);
+            });
+
+            if (conn.open) broadcastToGuest();
+            else conn.on("open", broadcastToGuest);
+
+            if (!resolvedFirstConn) {
+            resolvedFirstConn = true;
+            resolve(conn);
+          }
+        };
+        if (conn.open) finish();
+        else conn.on("open", finish);
+      });
     });
   }
 

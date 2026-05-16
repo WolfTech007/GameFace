@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useReducer, useRef, useState } from "react";
+import type { DataConnection } from "peerjs";
 import { useRouter } from "next/navigation";
 import styles from "./FacePong.module.css";
 import {
@@ -8,7 +9,7 @@ import {
   createGuestPeer,
   createHostRoom,
   guestAnswerCalls,
-  waitForHostConnection,
+  subscribeHostGuestDataConnections,
   type FacePongNetState,
   type GuestToHostMsg,
   type HostToGuestMsg,
@@ -171,6 +172,7 @@ export default function FacePong({
   const destroyRef = useRef<null | (() => void)>(null);
   const matchPollRef = useRef<number | null>(null);
   const privateAppliedRef = useRef(false);
+  const hostGuestConnUnsubRef = useRef<(() => void) | null>(null);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const hostStateRef = useRef<FacePongNetState>(makeInitialNetState());
@@ -298,6 +300,8 @@ export default function FacePong({
     destroyRef.current?.();
     destroyRef.current = null;
 
+    hostGuestConnUnsubRef.current?.();
+    hostGuestConnUnsubRef.current = null;
     if (peerRef.current) {
       try {
         peerRef.current.destroy();
@@ -653,38 +657,73 @@ export default function FacePong({
       });
     });
 
-    const conn = await waitForHostConnection(peer);
-    dataRef.current = conn;
-    remotePeerIdRef.current = typeof conn.peer === "string" ? conn.peer : null;
-    setOpponentConnected(true);
-    setStatus("Opponent connected");
+    let resolvedFirstConn = false;
+    await new Promise<DataConnection>((resolve, reject) => {
+      hostGuestConnUnsubRef.current?.();
+      hostGuestConnUnsubRef.current = subscribeHostGuestDataConnections(peer, (conn) => {
+        conn.on("error", (e: unknown) => reject(e));
+        const finish = () => {
+          const prev = dataRef.current;
+          const isReconnect = prev != null && prev !== conn;
+          if (prev && prev !== conn) {
+            try {
+              (prev as { removeAllListeners?: () => void }).removeAllListeners?.();
+            } catch {
+              /* ignore */
+            }
+          }
 
-    conn.on("data", (raw: any) => {
-      const msg = raw as GuestToHostMsg;
-      if (msg.t === "paddle") {
-        guestPaddleXRef.current = clamp(msg.x01, 0, 1);
-      } else if (msg.t === "ready") {
-        hostStateRef.current.ready.guest = msg.ready;
-        broadcastAuthoritativeState();
-        bumpLobby();
-        hostTryStartWhenBothReady();
-      } else if (msg.t === "rematch") {
-        if (hostStateRef.current.phase === "gameover") {
-          hostStateRef.current.rematch.guest = msg.want;
-          broadcastAuthoritativeState();
-          bumpLobby();
-          hostTryRematchFromGameOver();
-        }
-      }
-    });
+          if (
+            isReconnect &&
+            privateInviteCode &&
+            roleRef.current === "host" &&
+            hostStateRef.current.phase === "gameover"
+          ) {
+            hostApplyRematchReset();
+            setUiPhase("lobby");
+            setOpponentLeftMatch(false);
+          }
 
-    conn.on("close", () => {
-      setOpponentConnected(false);
-      setOpponentLeftMatch(true);
-    });
+          dataRef.current = conn;
+          remotePeerIdRef.current = typeof conn.peer === "string" ? conn.peer : null;
+          setOpponentConnected(true);
+          setStatus("Opponent connected");
 
-    conn.on("open", () => {
-      broadcastAuthoritativeState();
+          conn.on("data", (raw: any) => {
+            const msg = raw as GuestToHostMsg;
+            if (msg.t === "paddle") {
+              guestPaddleXRef.current = clamp(msg.x01, 0, 1);
+            } else if (msg.t === "ready") {
+              hostStateRef.current.ready.guest = msg.ready;
+              broadcastAuthoritativeState();
+              bumpLobby();
+              hostTryStartWhenBothReady();
+            } else if (msg.t === "rematch") {
+              if (hostStateRef.current.phase === "gameover") {
+                hostStateRef.current.rematch.guest = msg.want;
+                broadcastAuthoritativeState();
+                bumpLobby();
+                hostTryRematchFromGameOver();
+              }
+            }
+          });
+
+          conn.on("close", () => {
+            setOpponentConnected(false);
+            setOpponentLeftMatch(true);
+          });
+
+          if (conn.open) broadcastAuthoritativeState();
+          else conn.on("open", broadcastAuthoritativeState);
+
+          if (!resolvedFirstConn) {
+            resolvedFirstConn = true;
+            resolve(conn);
+          }
+        };
+        if (conn.open) finish();
+        else conn.on("open", finish);
+      });
     });
   }
 

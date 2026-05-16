@@ -1,5 +1,6 @@
 "use client";
 
+import type { DataConnection } from "peerjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./StaringContest.module.css";
@@ -8,7 +9,7 @@ import {
   createGuestPeer,
   createHostRoom,
   guestAnswerCalls,
-  waitForHostConnection,
+  subscribeHostGuestDataConnections,
 } from "@/lib/peerRoom";
 import { createStaringContestLandmarker } from "@/lib/staringContestFaceLandmarker";
 import {
@@ -177,6 +178,7 @@ export default function StaringContest({
   const faceMissingSinceRef = useRef<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
   const privateAppliedRef = useRef(false);
+  const hostGuestConnUnsubRef = useRef<(() => void) | null>(null);
 
   const rematchIntentRef = useRef<RematchIntent>(emptyRematchIntent());
   const [, setRematchBump] = useState(0);
@@ -287,6 +289,8 @@ export default function StaringContest({
       window.clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
+    hostGuestConnUnsubRef.current?.();
+    hostGuestConnUnsubRef.current = null;
     try {
       peerRef.current?.destroy?.();
     } catch {
@@ -494,6 +498,44 @@ export default function StaringContest({
     sendNet({ t: "ready", ready: false });
   }
 
+  /** Private room: guest reconnected after round ended — sync both to lobby. */
+  function hostForcePrivateReconnectLobbyAfterGuestReconnect() {
+    if (!privateInviteCode) return;
+    if (hostRoleRef.current !== "host") return;
+    if (phaseRef.current !== "ended") return;
+
+    matchEpochRef.current += 1;
+    const epoch = matchEpochRef.current;
+    rematchIntentRef.current = emptyRematchIntent();
+    bumpRematchUi();
+
+    gameEndedRef.current = false;
+    gameStartWallMsRef.current = null;
+    faceMissingSinceRef.current = null;
+    setEndedWinner(null);
+    setRoundSeconds(0);
+    setPlayingElapsedMs(0);
+    setCountdownN(null);
+    setWarnFace(false);
+    earCalibRef.current = [];
+    earThresholdRef.current = 0.22;
+    blinkSmootherRef.current.reset();
+    blinkBlendSmootherRef.current.reset();
+    setLocalReady(false);
+    setRemoteReady(false);
+    setPhase("lobby");
+    setLobbyEpoch((e) => e + 1);
+
+    sendNet({ t: "sc_rematch_go", matchEpoch: epoch });
+    sendNet({
+      t: "sc_rematch_state",
+      host: false,
+      guest: false,
+      matchEpoch: epoch,
+    });
+    sendNet({ t: "ready", ready: false });
+  }
+
   function guestApplyRematchGo(epoch: number) {
     void epoch;
     setGuestRematch(emptyRematchIntent());
@@ -626,18 +668,47 @@ export default function StaringContest({
         });
       });
 
-      const conn = await waitForHostConnection(peer);
-      dataRef.current = conn;
-      setOpponentLeftMatch(false);
-      wireData(conn, true);
+      let resolvedFirstConn = false;
+      await new Promise<DataConnection>((resolve, reject) => {
+        hostGuestConnUnsubRef.current?.();
+        hostGuestConnUnsubRef.current = subscribeHostGuestDataConnections(peer, (conn) => {
+          conn.on("error", (e: unknown) => reject(e));
+          const finish = () => {
+            const prev = dataRef.current;
+            const isReconnect = prev != null && prev !== conn;
+            if (prev && prev !== conn) {
+              try {
+                (prev as { removeAllListeners?: () => void }).removeAllListeners?.();
+              } catch {
+                /* ignore */
+              }
+            }
 
-      conn.on("close", () => {
-        setOpponentLeftMatch(true);
-        setDataChannelReady(false);
-      });
+            dataRef.current = conn;
+            if (isReconnect && privateInviteCode && phaseRef.current === "ended") {
+              hostForcePrivateReconnectLobbyAfterGuestReconnect();
+            }
 
-      whenDataConnOpen(conn, () => {
-        sendNet({ t: "hello", name: nameRef.current || "Player" });
+            setOpponentLeftMatch(false);
+            wireData(conn, true);
+
+            conn.on("close", () => {
+              setOpponentLeftMatch(true);
+              setDataChannelReady(false);
+            });
+
+            whenDataConnOpen(conn, () => {
+              sendNet({ t: "hello", name: nameRef.current || "Player" });
+            });
+
+            if (!resolvedFirstConn) {
+              resolvedFirstConn = true;
+              resolve(conn);
+            }
+          };
+          if (conn.open) finish();
+          else conn.on("open", finish);
+        });
       });
     } else {
       const peer = await createGuestPeer();

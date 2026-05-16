@@ -1,5 +1,6 @@
 "use client";
 
+import type { DataConnection } from "peerjs";
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 import React, { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -8,7 +9,7 @@ import {
   createGuestPeer,
   createHostRoom,
   guestAnswerCalls,
-  waitForHostConnection,
+  subscribeHostGuestDataConnections,
 } from "@/lib/peerRoom";
 import { RematchBar } from "@/components/RematchBar";
 import { rematchBothWant } from "@/lib/rematchSync";
@@ -222,6 +223,7 @@ export default function StackUp({
   const dataRef = useRef<any>(null);
   const matchPollRef = useRef<number | null>(null);
   const privateAppliedRef = useRef(false);
+  const hostGuestConnUnsubRef = useRef<(() => void) | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const hostRtRef = useRef<StackUpHostRuntime | null>(null);
   const netRef = useRef<StackUpNetState>(cloneStackUpState(createStackUpHostRuntime().state));
@@ -343,6 +345,8 @@ export default function StackUp({
       matchPollRef.current = null;
     }
     void leaveQueue();
+    hostGuestConnUnsubRef.current?.();
+    hostGuestConnUnsubRef.current = null;
     if (peerRef.current) {
       try {
         peerRef.current.destroy();
@@ -572,38 +576,79 @@ export default function StackUp({
       });
     });
 
-    const conn = await waitForHostConnection(peer);
-    dataRef.current = conn;
-    setOpponentConnected(true);
-    setStatus("Opponent connected");
+    let resolvedFirstConn = false;
+    await new Promise<DataConnection>((resolve, reject) => {
+      hostGuestConnUnsubRef.current?.();
+      hostGuestConnUnsubRef.current = subscribeHostGuestDataConnections(peer, (conn) => {
+        conn.on("error", (e: unknown) => reject(e));
+        const finish = () => {
+          const prev = dataRef.current;
+          const isReconnect = prev != null && prev !== conn;
+          if (prev && prev !== conn) {
+            try {
+              (prev as { removeAllListeners?: () => void }).removeAllListeners?.();
+            } catch {
+              /* ignore */
+            }
+          }
 
-    conn.on("data", (raw: unknown) => {
-      const msg = raw as GuestToHostStackUpMsg;
-      const rt = hostRtRef.current;
-      if (!rt) return;
-      if (msg.t === "ready") {
-        rt.state.ready.guest = msg.ready;
-        broadcastAuthoritativeState();
-        bumpUi();
-      } else if (msg.t === "rematch") {
-        if (rt.state.phase === "gameover") {
-          rt.state.rematch.guest = msg.want;
-          broadcastAuthoritativeState();
-          bumpUi();
-          hostTryRematch();
-        }
-      } else if (msg.t === "stopAttempt") {
-        hostHandleStopFromNetwork(msg.brickEpoch);
-      }
+          const rt = hostRtRef.current;
+          if (
+            isReconnect &&
+            privateInviteCode &&
+            roleRef.current === "host" &&
+            rt &&
+            rt.state.phase === "gameover"
+          ) {
+            const nextEpoch = (rt.state.matchEpoch ?? 0) + 1;
+            resetStackUpRuntime(rt, nextEpoch);
+            setUiPhase("lobby");
+            setOpponentLeftMatch(false);
+            lastBrickEpochStoppedRef.current = -1;
+            lastSeenBrickEpochRef.current = -1;
+          }
+
+          dataRef.current = conn;
+          setOpponentConnected(true);
+          setStatus("Opponent connected");
+
+          conn.on("data", (raw: unknown) => {
+            const msg = raw as GuestToHostStackUpMsg;
+            const rtInner = hostRtRef.current;
+            if (!rtInner) return;
+            if (msg.t === "ready") {
+              rtInner.state.ready.guest = msg.ready;
+              broadcastAuthoritativeState();
+              bumpUi();
+            } else if (msg.t === "rematch") {
+              if (rtInner.state.phase === "gameover") {
+                rtInner.state.rematch.guest = msg.want;
+                broadcastAuthoritativeState();
+                bumpUi();
+                hostTryRematch();
+              }
+            } else if (msg.t === "stopAttempt") {
+              hostHandleStopFromNetwork(msg.brickEpoch);
+            }
+          });
+
+          conn.on("close", () => {
+            setOpponentConnected(false);
+            setOpponentLeftMatch(true);
+          });
+
+          if (conn.open) broadcastAuthoritativeState();
+          else conn.on("open", broadcastAuthoritativeState);
+
+          if (!resolvedFirstConn) {
+            resolvedFirstConn = true;
+            resolve(conn);
+          }
+        };
+        if (conn.open) finish();
+        else conn.on("open", finish);
+      });
     });
-
-    conn.on("close", () => {
-      setOpponentConnected(false);
-      setOpponentLeftMatch(true);
-    });
-
-    if (conn.open) broadcastAuthoritativeState();
-    else conn.on("open", broadcastAuthoritativeState);
   }
 
   async function connectAsGuest(rid: string) {

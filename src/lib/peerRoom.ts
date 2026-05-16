@@ -93,6 +93,24 @@ export function waitForHostConnection(peer: Peer) {
   });
 }
 
+/**
+ * Keeps listening for guest data connections after the first (PeerJS host is long-lived).
+ * Needed when the guest disconnects and opens a new data channel to the same room id.
+ * Call cleanup (return value) before destroying the host peer.
+ */
+export function subscribeHostGuestDataConnections(
+  peer: Peer,
+  onGuestConn: (conn: DataConnection) => void,
+): () => void {
+  const onIncoming = (conn: DataConnection) => {
+    const fire = () => onGuestConn(conn);
+    if (conn.open) fire();
+    else conn.on("open", fire);
+  };
+  peer.on("connection", onIncoming);
+  return () => peer.off("connection", onIncoming);
+}
+
 export function hostCallGuest(peer: Peer, guestPeerId: string, stream: MediaStream) {
   const call = peer.call(guestPeerId, stream);
   return call;
