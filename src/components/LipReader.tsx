@@ -27,7 +27,8 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
-import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { PrivateInviteWaitModal } from "@/components/gameface/PrivateInviteWaitModal";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -717,6 +718,9 @@ export default function LipReader({
 
   const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY.charades;
 
+  const showPrivateInviteWait =
+    !uiMenu && role === "host" && !!privateInviteCode && !opponentConnected;
+
   const showDuelHud = !uiMenu;
 
   const opponentHudDisplay =
@@ -792,26 +796,6 @@ export default function LipReader({
               </div>
             ) : null}
           </div>
-
-          {!uiMenu && role === "host" && privateInviteCode && !opponentConnected ? (
-            <div className={gp.surfaceDock}>
-              <span className={gp.dockCaption} style={{ wordBreak: "break-all", textAlign: "center" }}>
-                Waiting for your friend — send them this link:
-                <br />
-                {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
-              </span>
-              <button
-                type="button"
-                className={gp.surfacePillGhost}
-                onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
-              >
-                Copy invite link
-              </button>
-              <button type="button" className={gp.surfacePillGhost} onClick={() => router.push("/")}>
-                Go home
-              </button>
-            </div>
-          ) : null}
 
           {!uiMenu && !matchmaking && opponentConnected && gs.phase === "playing" ? (
             <div className={gp.hintFloat}>
@@ -974,6 +958,18 @@ export default function LipReader({
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {showPrivateInviteWait && privateInviteCode ? (
+        <PrivateInviteWaitModal
+          gameTitle={introCfg.title}
+          plainUsername={hudPlainUsername(profile.username)}
+          playPath={introCfg.playPath}
+          inviteCode={privateInviteCode}
+          onCopy={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+          onCancel={leaveMatch}
+          onGoHome={() => router.push("/")}
+        />
       ) : null}
     </main>
   );

@@ -22,7 +22,8 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
-import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { PrivateInviteWaitModal } from "@/components/gameface/PrivateInviteWaitModal";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -951,6 +952,8 @@ export default function FacePong({
   const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
   const showGameOver = uiPhase === "gameover";
+  const showPrivateInviteWait =
+    showLobby && role === "host" && !!privateInviteCode && !opponentConnected;
 
   return (
     <main className={gp.surfaceRoot}>
@@ -1094,7 +1097,7 @@ export default function FacePong({
           </div>
         ) : null}
 
-        {showLobby ? (
+        {showLobby && !showPrivateInviteWait ? (
           <div className={styles.overlay}>
             <div className={styles.card}>
               <div className={styles.title}>FacePong Lobby</div>
@@ -1108,16 +1111,8 @@ export default function FacePong({
                     : hostStateRef.current.ready.host
                       ? "Opponent is ready."
                       : "Waiting for opponent to ready up…"
-                  : role === "host" && privateInviteCode
-                    ? "Waiting for your friend — send them the invite link below."
-                    : "Waiting for opponent…"}
+                  : "Waiting for opponent…"}
               </div>
-
-              {role === "host" && privateInviteCode && !opponentConnected ? (
-                <div className={`${styles.subMuted} ${styles.mono}`} style={{ wordBreak: "break-all", marginTop: "8px" }}>
-                  {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
-                </div>
-              ) : null}
 
               <div className={styles.row}>
                 {opponentConnected ? (
@@ -1138,15 +1133,6 @@ export default function FacePong({
               </div>
 
               <div className={styles.row2}>
-                {role === "host" && privateInviteCode && !opponentConnected ? (
-                  <button
-                    className={`${styles.button} ${styles.buttonSecondary}`}
-                    type="button"
-                    onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
-                  >
-                    Copy invite link
-                  </button>
-                ) : null}
                 <button
                   className={`${styles.button} ${styles.buttonSecondary}`}
                   type="button"
@@ -1201,6 +1187,20 @@ export default function FacePong({
         ) : null}
       </div>
       </div>
+
+      {showPrivateInviteWait && privateInviteCode ? (
+        <PrivateInviteWaitModal
+          gameTitle={introCfg.title}
+          plainUsername={hudPlainUsername(profile.username)}
+          playPath={introCfg.playPath}
+          inviteCode={privateInviteCode}
+          onCopy={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+          onCancel={() => {
+            leaveMatch();
+          }}
+          onGoHome={() => router.push("/")}
+        />
+      ) : null}
     </main>
   );
 }

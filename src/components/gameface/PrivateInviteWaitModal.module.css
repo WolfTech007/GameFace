@@ -1,0 +1,125 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.card {
+  width: min(420px, 100%);
+  max-height: min(560px, calc(100dvh - 32px));
+  overflow: auto;
+  padding: 22px 20px 20px;
+  border-radius: 18px;
+  background: rgba(10, 14, 26, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.08),
+    0 24px 80px rgba(0, 0, 0, 0.65);
+  pointer-events: auto;
+}
+
+.gameTitle {
+  font-size: clamp(18px, 4.8vw, 22px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.96);
+  margin: 0 0 12px;
+}
+
+.lineMuted {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 550;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.handle {
+  color: rgba(56, 189, 248, 0.95);
+  font-weight: 650;
+}
+
+.lineWaiting {
+  margin: 0 0 14px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.inviteBox {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-all;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.82);
+  margin-bottom: 14px;
+}
+
+.copyBtn {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: #042018;
+  background: linear-gradient(135deg, #5eead4, #38bdf8);
+  box-shadow: 0 10px 36px rgba(56, 189, 248, 0.35);
+}
+
+.copyBtn:hover {
+  filter: brightness(1.06);
+}
+
+.copyBtn:active {
+  transform: scale(0.99);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.btnGhost {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.btnGhost:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.btnGhost:active {
+  transform: scale(0.99);
+}

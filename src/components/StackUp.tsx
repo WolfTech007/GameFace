@@ -21,7 +21,8 @@ import { GFBottomNav } from "@/components/gameface/GFBottomNav";
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
-import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { PrivateInviteWaitModal } from "@/components/gameface/PrivateInviteWaitModal";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import styles from "./StackUp.module.css";
 import type { GuestToHostStackUpMsg, HostToGuestStackUpMsg, StackUpNetState, StackUpSeg } from "@/lib/stackUp/netTypes";
@@ -913,6 +914,8 @@ export default function StackUp({
   const showMatchmaking = uiPhase === "matchmaking";
   const showLobby = uiPhase === "lobby";
   const showGameOver = uiPhase === "gameover";
+  const showPrivateInviteWait =
+    showLobby && role === "host" && !!privateInviteCode && !opponentConnected;
 
   const net = getDrawState();
   const iAmBlue = role === "host";
@@ -1079,7 +1082,7 @@ export default function StackUp({
           </div>
         ) : null}
 
-        {showLobby ? (
+        {showLobby && !showPrivateInviteWait ? (
           <div className={styles.lobbyLayer}>
             <div className={styles.menuWrap}>
               <div className={styles.menuCard}>
@@ -1094,15 +1097,8 @@ export default function StackUp({
                       : readyHost
                         ? "Opponent is ready."
                         : "Waiting for opponent…"
-                    : role === "host" && privateInviteCode
-                      ? "Waiting for your friend — send them the invite link below."
-                      : "Waiting for opponent…"}
+                    : "Waiting for opponent…"}
                 </p>
-                {role === "host" && privateInviteCode && !opponentConnected ? (
-                  <p className={styles.status} style={{ wordBreak: "break-all" }}>
-                    {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
-                  </p>
-                ) : null}
                 <div className={styles.row}>
                   {opponentConnected ? (
                     <button
@@ -1115,15 +1111,6 @@ export default function StackUp({
                   ) : null}
                 </div>
                 <div className={styles.row}>
-                  {role === "host" && privateInviteCode && !opponentConnected ? (
-                    <button
-                      type="button"
-                      className={styles.buttonSecondary}
-                      onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
-                    >
-                      Copy invite link
-                    </button>
-                  ) : null}
                   <button type="button" className={styles.buttonSecondary} onClick={leaveMatch}>
                     Back
                   </button>
@@ -1135,6 +1122,18 @@ export default function StackUp({
               </div>
             </div>
           </div>
+        ) : null}
+
+        {showPrivateInviteWait && privateInviteCode ? (
+          <PrivateInviteWaitModal
+            gameTitle={introCfg.title}
+            plainUsername={hudPlainUsername(profile.username)}
+            playPath={introCfg.playPath}
+            inviteCode={privateInviteCode}
+            onCopy={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+            onCancel={leaveMatch}
+            onGoHome={goHome}
+          />
         ) : null}
       </main>
 

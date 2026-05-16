@@ -9,3 +9,5 @@ export { GamePlayEntrance } from "./GamePlayEntrance";
 export { PausedForLaunchPage } from "./PausedForLaunchPage";
 export { GameplayDuelHud } from "./gameplay/GameplayDuelHud";
 export type { DuelHudIdentity, GameplayDuelHudProps } from "./gameplay/GameplayDuelHud";
+export { PrivateInviteWaitModal } from "./PrivateInviteWaitModal";
+export type { PrivateInviteWaitModalProps } from "./PrivateInviteWaitModal";

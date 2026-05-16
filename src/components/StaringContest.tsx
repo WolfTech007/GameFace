@@ -26,7 +26,8 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
-import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { PrivateInviteWaitModal } from "@/components/gameface/PrivateInviteWaitModal";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -817,6 +818,9 @@ export default function StaringContest({
   const displayLocalName = profile.displayName.trim() || "Guest";
   const displayRemoteName = opponentName?.trim() || "Connecting";
 
+  const showPrivateInviteWait =
+    phase === "lobby" && role === "host" && !!privateInviteCode && !dataChannelReady;
+
   const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY["staring-contest"];
 
   const showGameChrome =
@@ -961,7 +965,7 @@ export default function StaringContest({
                     <div className={gp.riskRibbon}>Face lost · get back in frame</div>
                   ) : null}
 
-                  {phase === "lobby" ? (
+                  {phase === "lobby" && !showPrivateInviteWait ? (
                     <div className={gp.floatingGlass}>
                       <div className={gp.glassPanel}>
                         <div className={gp.resultKicker}>Lobby</div>
@@ -983,33 +987,6 @@ export default function StaringContest({
                         >
                           {localReady ? "Cancel ready" : "Ready"}
                         </button>
-                        {role === "host" && privateInviteCode && !dataChannelReady ? (
-                          <button
-                            type="button"
-                            className={gp.surfacePillGhost}
-                            style={{ marginTop: "10px", width: "100%" }}
-                            onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
-                          >
-                            Copy invite link
-                          </button>
-                        ) : null}
-                        {role === "host" && privateInviteCode && !dataChannelReady ? (
-                          <div className={gp.resultDetail} style={{ marginTop: "10px", wordBreak: "break-all" }}>
-                            Waiting for your friend — share this link:
-                            <br />
-                            {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
-                          </div>
-                        ) : null}
-                        {role === "host" && privateInviteCode && !dataChannelReady ? (
-                          <button
-                            type="button"
-                            className={gp.surfacePillGhost}
-                            style={{ marginTop: "10px", width: "100%" }}
-                            onClick={() => router.push("/")}
-                          >
-                            Go home
-                          </button>
-                        ) : null}
                         <div className={gp.resultDetail} style={{ marginTop: "10px" }}>
                           Them: {remoteReady ? "Ready ✓" : "Waiting"}
                         </div>
@@ -1052,6 +1029,17 @@ export default function StaringContest({
               ) : null}
             </div>
           </div>
+        {showPrivateInviteWait && privateInviteCode ? (
+          <PrivateInviteWaitModal
+            gameTitle={introCfg.title}
+            plainUsername={hudPlainUsername(profile.username)}
+            playPath={introCfg.playPath}
+            inviteCode={privateInviteCode}
+            onCopy={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
+            onCancel={leaveMatch}
+            onGoHome={() => router.push("/")}
+          />
+        ) : null}
         </div>
       ) : null}
     </div>
