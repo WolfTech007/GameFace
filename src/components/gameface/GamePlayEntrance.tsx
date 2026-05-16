@@ -108,10 +108,19 @@ function GamePlayEntranceInner({ children, expectedPrivateGameSlug }: GamePlayEn
   );
 }
 
+/** Reads search params outside keyed inner so invite query changes remount resolver + games (fixes same-route `?privateInvite=` navigation). */
+function GamePlayEntranceShell(props: GamePlayEntranceProps) {
+  const sp = useSearchParams();
+  const inviteRaw = sp.get("privateInvite")?.trim() ?? "";
+  return (
+    <GamePlayEntranceInner key={inviteRaw || "__no_private_invite__"} {...props} />
+  );
+}
+
 export function GamePlayEntrance(props: GamePlayEntranceProps) {
   return (
     <Suspense fallback={<PlayRouteFallback />}>
-      <GamePlayEntranceInner {...props} />
+      <GamePlayEntranceShell {...props} />
     </Suspense>
   );
 }

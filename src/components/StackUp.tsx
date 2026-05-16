@@ -21,7 +21,7 @@ import { GFBottomNav } from "@/components/gameface/GFBottomNav";
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
-import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import styles from "./StackUp.module.css";
 import type { GuestToHostStackUpMsg, HostToGuestStackUpMsg, StackUpNetState, StackUpSeg } from "@/lib/stackUp/netTypes";
@@ -1064,7 +1064,9 @@ export default function StackUp({
             <div className={styles.menuWrap}>
               <div className={styles.menuCard}>
                 <div className={styles.title}>Stack Up</div>
-                <p className={styles.sub}>Searching for an opponent…</p>
+                <p className={styles.sub}>
+                  {privateInviteCode ? "Connecting to your private match…" : "Searching for an opponent…"}
+                </p>
                 <div className={styles.row}>
                   <button type="button" className={styles.buttonSecondary} onClick={cancelMatchmaking}>
                     Cancel
@@ -1092,8 +1094,15 @@ export default function StackUp({
                       : readyHost
                         ? "Opponent is ready."
                         : "Waiting for opponent…"
-                    : "Waiting for opponent…"}
+                    : role === "host" && privateInviteCode
+                      ? "Waiting for your friend — send them the invite link below."
+                      : "Waiting for opponent…"}
                 </p>
+                {role === "host" && privateInviteCode && !opponentConnected ? (
+                  <p className={styles.status} style={{ wordBreak: "break-all" }}>
+                    {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
+                  </p>
+                ) : null}
                 <div className={styles.row}>
                   {opponentConnected ? (
                     <button
@@ -1117,6 +1126,9 @@ export default function StackUp({
                   ) : null}
                   <button type="button" className={styles.buttonSecondary} onClick={leaveMatch}>
                     Back
+                  </button>
+                  <button type="button" className={styles.buttonSecondary} onClick={goHome}>
+                    Go home
                   </button>
                 </div>
                 <p className={styles.status}>{status}</p>

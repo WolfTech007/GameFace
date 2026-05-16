@@ -26,7 +26,7 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
-import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -991,6 +991,23 @@ export default function StaringContest({
                             onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
                           >
                             Copy invite link
+                          </button>
+                        ) : null}
+                        {role === "host" && privateInviteCode && !dataChannelReady ? (
+                          <div className={gp.resultDetail} style={{ marginTop: "10px", wordBreak: "break-all" }}>
+                            Waiting for your friend — share this link:
+                            <br />
+                            {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
+                          </div>
+                        ) : null}
+                        {role === "host" && privateInviteCode && !dataChannelReady ? (
+                          <button
+                            type="button"
+                            className={gp.surfacePillGhost}
+                            style={{ marginTop: "10px", width: "100%" }}
+                            onClick={() => router.push("/")}
+                          >
+                            Go home
                           </button>
                         ) : null}
                         <div className={gp.resultDetail} style={{ marginTop: "10px" }}>

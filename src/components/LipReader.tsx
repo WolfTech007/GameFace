@@ -27,7 +27,7 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
-import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -795,6 +795,11 @@ export default function LipReader({
 
           {!uiMenu && role === "host" && privateInviteCode && !opponentConnected ? (
             <div className={gp.surfaceDock}>
+              <span className={gp.dockCaption} style={{ wordBreak: "break-all", textAlign: "center" }}>
+                Waiting for your friend — send them this link:
+                <br />
+                {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
+              </span>
               <button
                 type="button"
                 className={gp.surfacePillGhost}
@@ -802,7 +807,9 @@ export default function LipReader({
               >
                 Copy invite link
               </button>
-              <span className={gp.dockCaption}>Share this link so your teammate can join.</span>
+              <button type="button" className={gp.surfacePillGhost} onClick={() => router.push("/")}>
+                Go home
+              </button>
             </div>
           ) : null}
 

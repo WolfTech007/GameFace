@@ -24,7 +24,7 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdentity";
-import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -995,6 +995,13 @@ export default function FaceCard({
                     <div className={gp.resultKicker}>Lobby</div>
                     <div className={gp.resultTitle}>Opponent locked in</div>
                     <div className={gp.resultDetail}>Tap ready when your camera is stable.</div>
+                    {role === "host" && privateInviteCode && !remoteReady ? (
+                      <div className={gp.resultDetail} style={{ wordBreak: "break-all" }}>
+                        Waiting for your friend — share this link:
+                        <br />
+                        {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
+                      </div>
+                    ) : null}
                     <button type="button" className={gp.surfacePill} style={{ marginTop: "14px", width: "100%" }} onClick={toggleReady}>
                       {localReady ? "Cancel ready" : "Ready"}
                     </button>
@@ -1006,6 +1013,16 @@ export default function FaceCard({
                         onClick={() => void copyPrivateInviteLink(introCfg.playPath, privateInviteCode)}
                       >
                         Copy invite link
+                      </button>
+                    ) : null}
+                    {role === "host" && privateInviteCode && !remoteReady ? (
+                      <button
+                        type="button"
+                        className={gp.surfacePillGhost}
+                        style={{ marginTop: "10px", width: "100%" }}
+                        onClick={() => router.push("/")}
+                      >
+                        Go home
                       </button>
                     ) : null}
                     <div className={gp.resultDetail} style={{ marginTop: "10px" }}>

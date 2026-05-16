@@ -22,7 +22,7 @@ import { GameplayDuelHud } from "@/components/gameface/gameplay/GameplayDuelHud"
 import { hudPlainUsername } from "@/lib/gameface/hudIdentity";
 import { GameIntroOverlay } from "@/components/gameface/GameIntroOverlay";
 import { GAME_INTRO_REGISTRY, type GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
-import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
+import { buildPrivateInviteUrl, copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
@@ -1071,7 +1071,9 @@ export default function FacePong({
             <div className={styles.card}>
               <div className={styles.title}>FacePong</div>
               <>
-                <div className={styles.sub}>Searching for an opponent…</div>
+                <div className={styles.sub}>
+                  {privateInviteCode ? "Connecting to your private match…" : "Searching for an opponent…"}
+                </div>
                 <div className={styles.row}>
                   <button
                     className={`${styles.button} ${styles.buttonSecondary}`}
@@ -1106,8 +1108,16 @@ export default function FacePong({
                     : hostStateRef.current.ready.host
                       ? "Opponent is ready."
                       : "Waiting for opponent to ready up…"
-                  : "Waiting for opponent…"}
+                  : role === "host" && privateInviteCode
+                    ? "Waiting for your friend — send them the invite link below."
+                    : "Waiting for opponent…"}
               </div>
+
+              {role === "host" && privateInviteCode && !opponentConnected ? (
+                <div className={`${styles.subMuted} ${styles.mono}`} style={{ wordBreak: "break-all", marginTop: "8px" }}>
+                  {buildPrivateInviteUrl(introCfg.playPath, privateInviteCode)}
+                </div>
+              ) : null}
 
               <div className={styles.row}>
                 {opponentConnected ? (
@@ -1137,6 +1147,13 @@ export default function FacePong({
                     Copy invite link
                   </button>
                 ) : null}
+                <button
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  type="button"
+                  onClick={() => router.push("/")}
+                >
+                  Go home
+                </button>
                 <button
                   className={`${styles.button} ${styles.buttonSecondary}`}
                   type="button"
