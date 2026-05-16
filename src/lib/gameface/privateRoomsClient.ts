@@ -1,4 +1,5 @@
 import type { GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
+import { createFriendChallengeRow } from "@/lib/gameface/friendChallengesClient";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   PRIVATE_ROOM_PEER_PREFIX,
@@ -177,12 +178,42 @@ export async function startPrivateFriendChallenge(
   router: { push: (href: string) => void },
   introSlug: GameIntroSlug,
 ): Promise<void> {
-  console.log("[private-challenge] introSlug (game route):", introSlug);
   const slug = introSlugToPrivateRoomGameSlug(introSlug);
-  console.log("[private-challenge] mapped privateRoomGameSlug (DB):", slug);
   if (!slug) {
     router.push("/friends");
     return;
   }
   await startPrivateFriendChallengeWithGameSlug(router, slug, `intro:${introSlug}`);
+}
+
+/** Friends page: create private room + challenge row, then host enters waiting lobby. */
+export async function startFriendChallenge(
+  router: { push: (href: string) => void },
+  introSlug: GameIntroSlug,
+  toUserId: string,
+): Promise<void> {
+  const slug = introSlugToPrivateRoomGameSlug(introSlug);
+  if (!slug) {
+    throw new Error("invalid_game");
+  }
+  try {
+    const { inviteCode, playPath } = await createPrivateRoomAsHost(slug);
+    await createFriendChallengeRow(toUserId, slug, inviteCode);
+    const finalUrl = `${playPath}?privateInvite=${encodeURIComponent(inviteCode)}`;
+    router.push(finalUrl);
+  } catch (e) {
+    const msg = challengeErrorMessage(e);
+    if (msg === "sign_in_required") {
+      const path =
+        typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : "/";
+      router.push(`/login?redirect=${encodeURIComponent(path)}`);
+      return;
+    }
+    console.error("FRIEND_CHALLENGE_ERROR", e);
+    const code = supabaseErrorCode(e);
+    window.alert(
+      `Could not start challenge.\n${msg}${code.length ? ` (code: ${code})` : ""}`,
+    );
+    throw e;
+  }
 }

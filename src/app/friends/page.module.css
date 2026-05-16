@@ -248,3 +248,32 @@
   text-transform: uppercase;
   color: var(--gf-text-muted);
 }
+
+.challengeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--gf-radius-md);
+  border: 1px solid rgba(255, 200, 100, 0.25);
+  background: rgba(255, 180, 50, 0.08);
+}
+
+.challengeRowMuted {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--gf-radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.timeLeft {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--gf-accent-charades, #fbbf24);
+  font-variant-numeric: tabular-nums;
+}
