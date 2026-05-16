@@ -17,8 +17,8 @@ import {
   type OutgoingFriendRequest,
   type UserSearchHit,
 } from "@/lib/gameface/friendsClient";
-import { startPrivateFriendChallengeWithGameSlug } from "@/lib/gameface/privateRoomsClient";
-import type { PrivateRoomGameSlug } from "@/lib/gameface/privateRoomGames";
+import type { GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
+import { startPrivateFriendChallenge } from "@/lib/gameface/privateRoomsClient";
 import styles from "./page.module.css";
 
 function isSignedInProfile(username: string | undefined): boolean {
@@ -117,9 +117,13 @@ export default function FriendsPage() {
     }
   }
 
-  async function onChallengePick(slug: PrivateRoomGameSlug) {
-    setChallengeFriend(null);
-    await startPrivateFriendChallengeWithGameSlug(router, slug);
+  async function onChallengePick(introSlug: GameIntroSlug) {
+    console.log("[friends-challenge] starting via startPrivateFriendChallenge, introSlug:", introSlug);
+    try {
+      await startPrivateFriendChallenge(router, introSlug);
+    } finally {
+      setChallengeFriend(null);
+    }
   }
 
   if (!signedIn) {
@@ -260,7 +264,7 @@ export default function FriendsPage() {
       {challengeFriend ? (
         <FriendChallengeModal
           friendUsername={challengeFriend.username}
-          onPick={(slug) => void onChallengePick(slug)}
+          onPick={(introSlug) => void onChallengePick(introSlug)}
           onClose={() => setChallengeFriend(null)}
         />
       ) : null}

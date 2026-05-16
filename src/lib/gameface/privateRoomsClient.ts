@@ -140,11 +140,24 @@ function supabaseErrorCode(e: unknown): string {
 export async function startPrivateFriendChallengeWithGameSlug(
   router: { push: (href: string) => void },
   slug: PrivateRoomGameSlug,
+  debugSource = "unknown",
 ): Promise<void> {
+  console.log("[private-challenge] source:", debugSource, "privateRoomGameSlug:", slug);
   try {
-    const { inviteCode, playPath } = await createPrivateRoomAsHost(slug);
-    router.push(`${playPath}?privateInvite=${encodeURIComponent(inviteCode)}`);
+    const { inviteCode, playPath, peerRoomId } = await createPrivateRoomAsHost(slug);
+    const finalUrl = `${playPath}?privateInvite=${encodeURIComponent(inviteCode)}`;
+    console.log("[private-challenge] inviteCode:", inviteCode);
+    console.log("[private-challenge] playPath:", playPath);
+    console.log("[private-challenge] peerRoomId:", peerRoomId);
+    console.log("[private-challenge] finalUrl:", finalUrl);
+    if (!inviteCode) {
+      console.error("[private-challenge] inviteCode is undefined");
+      window.alert("PRIVATE CHALLENGE DEBUG: inviteCode is undefined");
+      return;
+    }
+    router.push(finalUrl);
   } catch (e) {
+    console.error("[private-challenge] Supabase/create error:", e);
     const msg = challengeErrorMessage(e);
     if (msg === "sign_in_required") {
       const path =
@@ -164,10 +177,12 @@ export async function startPrivateFriendChallenge(
   router: { push: (href: string) => void },
   introSlug: GameIntroSlug,
 ): Promise<void> {
+  console.log("[private-challenge] introSlug (game route):", introSlug);
   const slug = introSlugToPrivateRoomGameSlug(introSlug);
+  console.log("[private-challenge] mapped privateRoomGameSlug (DB):", slug);
   if (!slug) {
     router.push("/friends");
     return;
   }
-  await startPrivateFriendChallengeWithGameSlug(router, slug);
+  await startPrivateFriendChallengeWithGameSlug(router, slug, `intro:${introSlug}`);
 }
