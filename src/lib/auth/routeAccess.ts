@@ -15,15 +15,12 @@ export function isPublicPath(pathname: string): boolean {
 const GAME_HUB_ROOTS = [
   "/charades",
   "/facepong",
-  "/facecard",
   "/stack-up",
   "/staring-contest",
   "/lipreader",
   "/facebreaker",
   "/facehockey",
   "/rankit",
-  "/blink-stacker",
-  "/blink-stacker-duel",
 ] as const;
 
 function pathHasPlaySegment(pathname: string): boolean {

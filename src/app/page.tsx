@@ -45,19 +45,6 @@ export default function Page() {
               accent="staring"
             />
             <GFGameCard href="/facepong/play" title="FacePong" descriptor="1v1 webcam pong." accent="facepong" />
-            <GFGameCard
-              href="/facecard/play"
-              title="Face Card"
-              descriptor="Guess the name on your forehead."
-              accent="facecard"
-            />
-            <GFGameCard
-              href="/blink-stacker"
-              title="Blink Stacker"
-              descriptor="Solo · blink timing tower."
-              accent="blinkstacker"
-              mode="solo"
-            />
             <GFGameCard href="/stack-up/play" title="Stack Up" descriptor="1v1 · stack on your opponent." accent="blinkstackerduel" />
           </div>
         </section>

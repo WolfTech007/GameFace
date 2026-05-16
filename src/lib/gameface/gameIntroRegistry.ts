@@ -1,11 +1,5 @@
 /** Canonical slugs for copy + accent (used by GameIntroOverlay on `/play` routes). */
-export type GameIntroSlug =
-  | "charades"
-  | "staring-contest"
-  | "facepong"
-  | "facecard"
-  | "stack-up"
-  | "blink-stacker";
+export type GameIntroSlug = "charades" | "staring-contest" | "facepong" | "stack-up";
 
 export type GameIntroAccent =
   | "charades"
@@ -51,14 +45,6 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
     accent: "facepong",
     playPath: "/facepong/play",
   },
-  facecard: {
-    slug: "facecard",
-    title: "FACE CARD",
-    description:
-      "Each player wears a secret name on their forehead. Ask questions and guess who you are before your guesses run out.",
-    accent: "facecard",
-    playPath: "/facecard/play",
-  },
   "stack-up": {
     slug: "stack-up",
     title: "STACK UP",
@@ -66,13 +52,5 @@ export const GAME_INTRO_REGISTRY: Record<GameIntroSlug, GameIntroConfig> = {
       "Build a shared tower directly on your opponent's live camera feed. Take turns blinking to stop the moving block.",
     accent: "blinkstackerduel",
     playPath: "/stack-up/play",
-  },
-  "blink-stacker": {
-    slug: "blink-stacker",
-    title: "BLINK STACKER",
-    description:
-      "Stack the tower: when the moving block lines up, blink (or press Space / tap) to lock it. Too little overlap and the run ends.",
-    accent: "blinkstacker",
-    playPath: "/blink-stacker",
   },
 };

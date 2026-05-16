@@ -1,16 +1,10 @@
 import type { GameIntroSlug } from "@/lib/gameface/gameIntroRegistry";
 
 /** Stored in `private_rooms.game_slug` — matches PeerJS prefix conventions (`lipreader-*` on `/charades/play`). */
-export type PrivateRoomGameSlug =
-  | "facepong"
-  | "facecard"
-  | "stack-up"
-  | "staring-contest"
-  | "lipreader";
+export type PrivateRoomGameSlug = "facepong" | "stack-up" | "staring-contest" | "lipreader";
 
 export const PRIVATE_ROOM_PEER_PREFIX: Record<PrivateRoomGameSlug, string> = {
   facepong: "facepong",
-  facecard: "facecard",
   "stack-up": "stackup",
   "staring-contest": "staring",
   lipreader: "lipreader",
@@ -20,8 +14,6 @@ export function playPathForPrivateRoomGame(slug: PrivateRoomGameSlug): string {
   switch (slug) {
     case "facepong":
       return "/facepong/play";
-    case "facecard":
-      return "/facecard/play";
     case "stack-up":
       return "/stack-up/play";
     case "staring-contest":
@@ -42,8 +34,6 @@ export function introSlugToPrivateRoomGameSlug(intro: GameIntroSlug): PrivateRoo
       return "lipreader";
     case "facepong":
       return "facepong";
-    case "facecard":
-      return "facecard";
     case "stack-up":
       return "stack-up";
     case "staring-contest":

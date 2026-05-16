@@ -137,15 +137,10 @@ function supabaseErrorCode(e: unknown): string {
   return "";
 }
 
-export async function startPrivateFriendChallenge(
+export async function startPrivateFriendChallengeWithGameSlug(
   router: { push: (href: string) => void },
-  introSlug: GameIntroSlug,
+  slug: PrivateRoomGameSlug,
 ): Promise<void> {
-  const slug = introSlugToPrivateRoomGameSlug(introSlug);
-  if (!slug) {
-    router.push("/friends");
-    return;
-  }
   try {
     const { inviteCode, playPath } = await createPrivateRoomAsHost(slug);
     router.push(`${playPath}?privateInvite=${encodeURIComponent(inviteCode)}`);
@@ -163,4 +158,16 @@ export async function startPrivateFriendChallenge(
       `PRIVATE ROOM DEBUG (temporary)\nmessage: ${msg}\ncode: ${code.length ? code : "(none)"}`,
     );
   }
+}
+
+export async function startPrivateFriendChallenge(
+  router: { push: (href: string) => void },
+  introSlug: GameIntroSlug,
+): Promise<void> {
+  const slug = introSlugToPrivateRoomGameSlug(introSlug);
+  if (!slug) {
+    router.push("/friends");
+    return;
+  }
+  await startPrivateFriendChallengeWithGameSlug(router, slug);
 }

@@ -1,6 +1,6 @@
 /** Weighted pool for universal random match (server + client labels must stay in sync). */
 
-export type RandomGameId = "charades" | "staring" | "facepong" | "facecard";
+export type RandomGameId = "charades" | "staring" | "facepong";
 
 export type RandomGameMeta = {
   id: RandomGameId;
@@ -11,10 +11,9 @@ export type RandomGameMeta = {
 
 /** Weighted pool for universal random match — weights sum to 1. */
 export const RANDOM_GAME_POOL: RandomGameMeta[] = [
-  { id: "charades", label: "Charades", path: "/charades/play", weight: 0.25 },
-  { id: "staring", label: "Staring Contest", path: "/staring-contest/play", weight: 0.25 },
-  { id: "facepong", label: "FacePong", path: "/facepong/play", weight: 0.25 },
-  { id: "facecard", label: "Face Card", path: "/facecard/play", weight: 0.25 },
+  { id: "charades", label: "Charades", path: "/charades/play", weight: 1 / 3 },
+  { id: "staring", label: "Staring Contest", path: "/staring-contest/play", weight: 1 / 3 },
+  { id: "facepong", label: "FacePong", path: "/facepong/play", weight: 1 / 3 },
 ];
 
 export function pickWeightedGame(): RandomGameMeta {

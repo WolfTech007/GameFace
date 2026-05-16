@@ -69,7 +69,6 @@ async function mergeRemoteSessionIntoStore(
 
   const refreshed = loadProfile();
   if (!refreshed) return;
-  seedDemoFriends(refreshed);
   seedDemoActivity();
   setState(refreshed);
 }
