@@ -448,12 +448,22 @@ function FriendsPageContent(props: {
             <div className={styles.list}>
               {friends.map((f) => (
                 <div key={f.userId} className={styles.friendRow}>
-                  <div className={styles.avatar} aria-hidden />
-                  <div className={styles.meta}>
-                    <div className={styles.name}>{f.displayName}</div>
-                    <div className={styles.handle}>@{f.username}</div>
-                  </div>
-                  <GFButton variant="primary" type="button" onClick={() => setChallengeFriend(f)}>
+                  <Link href={`/profile/${encodeURIComponent(f.username)}`} className={styles.friendProfileLink}>
+                    <div className={styles.avatar} aria-hidden />
+                    <div className={styles.meta}>
+                      <div className={styles.name}>{f.displayName}</div>
+                      <div className={styles.handle}>@{f.username}</div>
+                    </div>
+                  </Link>
+                  <GFButton
+                    variant="primary"
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setChallengeFriend(f);
+                    }}
+                  >
                     Challenge
                   </GFButton>
                 </div>
@@ -545,24 +555,6 @@ function IncomingChallengeRow(props: {
           Decline
         </GFButton>
       </div>
-    </div>
-  );
-}
-
-function motionlessFriendMeta({ friend: f }: { friend: FriendUser }) {
-  return (
-    <div className={styles.meta}>
-      <div className={styles.name}>{f.displayName}</div>
-      <div className={styles.handle}>@{f.username}</div>
-    </div>
-  );
-}
-
-function motionlessOutgoingRequestMeta({ request: r }: { request: OutgoingFriendRequest }) {
-  return (
-    <div>
-      <div className={styles.name}>{r.displayName}</div>
-      <div className={styles.handle}>@{r.username}</div>
     </div>
   );
 }

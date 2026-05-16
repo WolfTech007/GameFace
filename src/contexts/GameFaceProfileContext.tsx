@@ -38,7 +38,7 @@ async function mergeRemoteSessionIntoStore(
 
   const { data: row, error } = await supabase
     .from("profiles")
-    .select("username, display_name, avatar_url")
+    .select("username, display_name, avatar_url, bio")
     .eq("id", userId)
     .maybeSingle();
 
@@ -57,11 +57,13 @@ async function mergeRemoteSessionIntoStore(
         : uname;
     const av =
       typeof row.avatar_url === "string" && row.avatar_url.trim().length ? row.avatar_url : undefined;
+    const bio = typeof row.bio === "string" ? row.bio : "";
     updateProfile({
       userId,
       username: uname,
       displayName: dn,
       avatarUrl: av,
+      bio,
     });
   } else {
     updateProfile({ userId });

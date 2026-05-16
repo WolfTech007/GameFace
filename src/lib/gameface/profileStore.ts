@@ -9,6 +9,7 @@ export type GameFaceProfile = {
   /** XP toward next level (client-only until accounts sync). */
   xp?: number;
   avatarUrl?: string;
+  bio?: string;
   favoriteGame?: string;
 };
 
