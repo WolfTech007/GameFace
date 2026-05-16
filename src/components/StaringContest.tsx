@@ -130,9 +130,11 @@ export default function StaringContest({
   /** Dev-only: forces re-read of video debug fields. */
   const [, setVideoDebugTick] = useState(0);
 
-  const [phase, setPhase] = useState<Phase>(() =>
-    autoJoinPublicQueue || fromRandomMatch || privateInviteLoading ? "queue" : "intro",
-  );
+  const [phase, setPhase] = useState<Phase>(() => {
+    if (autoJoinPublicQueue || fromRandomMatch) return "queue";
+    if (privateInviteLoading) return "peer_setup";
+    return "intro";
+  });
   const phaseRef = useRef<Phase>("intro");
   useEffect(() => {
     phaseRef.current = phase;
@@ -401,7 +403,7 @@ export default function StaringContest({
   }
 
   useEffect(() => {
-    if (phase !== "intro") return;
+    if (phase !== "intro" && phase !== "peer_setup") return;
     void ensureCamera();
   }, [phase]);
 
@@ -411,10 +413,9 @@ export default function StaringContest({
     hostRoleRef.current = r;
     setOpponentName(opp);
     setStatus("Opponent found.");
-    setPhase("peer_setup");
-    await setupPeer(roomId, r);
     setPhase("lobby");
     setLobbyEpoch((e) => e + 1);
+    await setupPeer(roomId, r);
   }
 
   useConsumePendingMatch("staring", (p) => {

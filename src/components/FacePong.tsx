@@ -775,15 +775,15 @@ export default function FacePong({
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
     }
-      setStatus("Connecting…");
+    setStatus("Connecting…");
     try {
+      setOpponentLeftMatch(false);
+      setUiPhase("lobby");
       if (r === "host") {
         await connectAsHost(peerRoomId);
       } else {
         await connectAsGuest(peerRoomId);
       }
-      setOpponentLeftMatch(false);
-      setUiPhase("lobby");
     } catch {
       cleanup();
       setStatus("Connection failed. Try again.");

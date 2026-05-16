@@ -111,9 +111,11 @@ export default function FaceCard({
   const localOverlayRef = useRef<HTMLCanvasElement | null>(null);
   const remoteOverlayRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [phase, setPhase] = useState<Phase>(() =>
-    autoJoinPublicQueue || fromRandomMatch || privateInviteLoading ? "queue" : "intro",
-  );
+  const [phase, setPhase] = useState<Phase>(() => {
+    if (autoJoinPublicQueue || fromRandomMatch) return "queue";
+    if (privateInviteLoading) return "peer_setup";
+    return "intro";
+  });
   const phaseRef = useRef<Phase>("intro");
   useEffect(() => {
     phaseRef.current = phase;
@@ -602,13 +604,12 @@ export default function FaceCard({
     setOpponentName(opp || "Opponent");
     setRole(r);
     setStatus("Opponent found.");
-    setPhase("peer_setup");
-    await setupPeer(roomId, r);
     setPhase("lobby");
+    await setupPeer(roomId, r);
   }
 
   useEffect(() => {
-    if (phase !== "intro") return;
+    if (phase !== "intro" && phase !== "peer_setup") return;
     void ensureCamera();
   }, [phase]);
 
