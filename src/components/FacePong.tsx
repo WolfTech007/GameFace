@@ -33,7 +33,7 @@ const QUEUE_POLL_MS = 600;
 /** Dev-only sync/presentation diagnostics (blue panel). Off in production builds. */
 const FP_UI_DEBUG = process.env.NODE_ENV === "development";
 
-type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
+type UiPhase = "menu" | "peer_setup" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
 
 function clamp(v: number, lo: number, hi: number) {
@@ -138,8 +138,11 @@ export default function FacePong({
   const frameRef = useRef<HTMLDivElement | null>(null);
 
   /** Random universal match lands with `?gf=1` only — match is already resolved; skip menu flash. */
-  const initialPhase: UiPhase =
-    autoJoinPublicQueue || fromRandomMatch || privateInviteLoading ? "matchmaking" : "menu";
+  const initialPhase: UiPhase = privateInviteLoading
+    ? "peer_setup"
+    : autoJoinPublicQueue || fromRandomMatch
+      ? "matchmaking"
+      : "menu";
   const [uiPhase, setUiPhase] = useState<UiPhase>(initialPhase);
   const uiPhaseRef = useRef<UiPhase>(initialPhase);
   useEffect(() => {
@@ -170,6 +173,7 @@ export default function FacePong({
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
   const destroyRef = useRef<null | (() => void)>(null);
+  const noseTrackerInitRef = useRef<Promise<void> | null>(null);
   const matchPollRef = useRef<number | null>(null);
   const privateAppliedRef = useRef(false);
   const hostGuestConnUnsubRef = useRef<(() => void) | null>(null);
@@ -290,7 +294,7 @@ export default function FacePong({
     }
   }
 
-  function cleanup() {
+  function cleanupPeer() {
     if (matchPollRef.current) {
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
@@ -299,6 +303,7 @@ export default function FacePong({
 
     destroyRef.current?.();
     destroyRef.current = null;
+    noseTrackerInitRef.current = null;
 
     hostGuestConnUnsubRef.current?.();
     hostGuestConnUnsubRef.current = null;
@@ -314,12 +319,40 @@ export default function FacePong({
     remotePeerIdRef.current = null;
     lastSentAtRef.current = null;
     lastAuthSentAtFromHostRef.current = null;
+  }
 
+  function cleanup() {
+    cleanupPeer();
     const s = localStreamRef.current;
     if (s) {
       for (const t of s.getTracks()) t.stop();
     }
     localStreamRef.current = null;
+  }
+
+  async function ensureNoseTracker() {
+    if (destroyRef.current) return;
+    if (!noseTrackerInitRef.current) {
+      noseTrackerInitRef.current = (async () => {
+        const video = localVideoRef.current;
+        if (!video) return;
+        const nose = await createNoseTracker();
+        destroyRef.current = nose.start({
+          videoEl: video,
+          mirrorSelfie: true,
+          onNoseX: (x01) => {
+            localNoseXRef.current = x01;
+            if (roleRef.current === "guest") {
+              const canonical = clamp(1 - x01, 0, 1);
+              sendToHost({ t: "paddle", x01: canonical });
+            } else {
+              smoothedLocalPaddleRef.current = x01;
+            }
+          },
+        });
+      })();
+    }
+    await noseTrackerInitRef.current;
   }
 
   function sendToHost(msg: GuestToHostMsg) {
@@ -520,7 +553,7 @@ export default function FacePong({
     ctx.clearRect(0, 0, w, h);
 
     const ui = uiPhaseRef.current;
-    if (ui === "menu" || ui === "matchmaking" || ui === "lobby") {
+    if (ui === "menu" || ui === "matchmaking" || ui === "peer_setup" || ui === "lobby") {
       return;
     }
 
@@ -616,22 +649,13 @@ export default function FacePong({
   }
 
   async function connectAsHost(desiredRoomId: string) {
-    cleanup();
+    cleanupPeer();
     setStatus("Creating room…");
     setRole("host");
     setOpponentConnected(false);
     hostResetState();
 
-    const stream = await ensureLocalCamera({ force: true });
-    const nose = await createNoseTracker();
-    destroyRef.current = nose.start({
-      videoEl: localVideoRef.current!,
-      mirrorSelfie: true,
-      onNoseX: (x01) => {
-        localNoseXRef.current = x01;
-        smoothedLocalPaddleRef.current = x01;
-      },
-    });
+    const stream = await ensureLocalCamera();
 
     let rid: string;
     let peer: any;
@@ -728,7 +752,7 @@ export default function FacePong({
   }
 
   async function connectAsGuest(rid: string) {
-    cleanup();
+    cleanupPeer();
     lastGuestSeqRef.current = -1;
     lastAuthSentAtFromHostRef.current = null;
     setStatus("Joining…");
@@ -736,19 +760,7 @@ export default function FacePong({
     setOpponentConnected(false);
     setRoomId(rid);
 
-    const stream = await ensureLocalCamera({ force: true });
-    const nose = await createNoseTracker();
-    destroyRef.current = nose.start({
-      videoEl: localVideoRef.current!,
-      mirrorSelfie: true,
-      onNoseX: (x01) => {
-        localNoseXRef.current = x01;
-        /* Presentation-only: guest canvas is CSS-rotated 180° so “you” appear at the bottom;
-           map visual nose X back to canonical world X for the host sim (world unchanged). */
-        const canonical = clamp(1 - x01, 0, 1);
-        sendToHost({ t: "paddle", x01: canonical });
-      },
-    });
+    const stream = await ensureLocalCamera();
 
     const peer = await createGuestPeer();
     peerRef.current = peer;
@@ -814,10 +826,11 @@ export default function FacePong({
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
     }
-    setStatus("Connecting…");
+    setOpponentLeftMatch(false);
+    setRole(r);
+    setStatus("Opponent found.");
+    setUiPhase("lobby");
     try {
-      setOpponentLeftMatch(false);
-      setUiPhase("lobby");
       if (r === "host") {
         await connectAsHost(peerRoomId);
       } else {
@@ -845,6 +858,16 @@ export default function FacePong({
     privateAppliedRef.current = true;
     void applyMatch(privateMatch.peerRoomId, privateMatch.role);
   }, [privateMatch]);
+
+  useEffect(() => {
+    if (privateInviteLoading) setUiPhase("peer_setup");
+  }, [privateInviteLoading]);
+
+  useEffect(() => {
+    if (uiPhase === "menu" || uiPhase === "matchmaking") return;
+    void ensureLocalCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- warm camera on menu / peer_setup / lobby
+  }, [uiPhase]);
 
   async function findMatch() {
     if (matchPollRef.current) {
@@ -949,6 +972,10 @@ export default function FacePong({
       const playing = uiPhaseRef.current === "playing";
       physicsRunningRef.current = !!(isHost && opponentConnected && playing);
 
+      if (playing) {
+        void ensureNoseTracker();
+      }
+
       // Host: sole physics while playing. Guest never calls hostTick.
       // Throttle net snapshots during play/gameover so PeerJS + React stay off the critical path.
       if (isHost && opponentConnected) {
@@ -989,6 +1016,7 @@ export default function FacePong({
   const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY.facepong;
   const showMenu = uiPhase === "menu";
   const showMatchmaking = uiPhase === "matchmaking";
+  const showPeerSetup = uiPhase === "peer_setup";
   const showLobby = uiPhase === "lobby";
   const showGameOver = uiPhase === "gameover";
   const showPrivateInviteWait =
@@ -1096,7 +1124,7 @@ export default function FacePong({
           </div>
         ) : null}
 
-        {showMenu && !showMatchmaking ? (
+        {showMenu && !showMatchmaking && !showPeerSetup ? (
           <GameIntroOverlay
             placement="frame"
             accent={introCfg.accent}

@@ -93,7 +93,9 @@ export default function LipReader({
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const [uiMenu, setUiMenu] = useState(() => !autoJoinPublicQueue && !fromRandomMatch && !privateInviteLoading);
-  const [matchmaking, setMatchmaking] = useState(() => autoJoinPublicQueue || privateInviteLoading);
+  /** Public queue search only — not used during private invite resolve (see peerSetup). */
+  const [matchmaking, setMatchmaking] = useState(() => autoJoinPublicQueue || fromRandomMatch);
+  const [peerSetup, setPeerSetup] = useState(privateInviteLoading);
   const nameRef = useRef(profile.displayName.trim().slice(0, 24) || "Player");
   useEffect(() => {
     nameRef.current = profile.displayName.trim().slice(0, 24) || "Player";
@@ -191,7 +193,7 @@ export default function LipReader({
     }
   }
 
-  function cleanup() {
+  function cleanupPeer() {
     clearScheduledTimers();
     if (matchPollRef.current) {
       window.clearInterval(matchPollRef.current);
@@ -209,13 +211,17 @@ export default function LipReader({
     }
     peerRef.current = null;
     dataRef.current = null;
+    gameStateRef.current = initialLipReaderState();
+    lastGuestSeqRef.current = -1;
+  }
+
+  function cleanup() {
+    cleanupPeer();
     const s = localStreamRef.current;
     if (s) {
       for (const t of s.getTracks()) t.stop();
     }
     localStreamRef.current = null;
-    gameStateRef.current = initialLipReaderState();
-    lastGuestSeqRef.current = -1;
   }
 
   function sendToHost(msg: GuestToHostLipMsg) {
@@ -403,6 +409,7 @@ export default function LipReader({
     cleanup();
     setUiMenu(true);
     setMatchmaking(false);
+    setPeerSetup(false);
     setRole(null);
     setRoomId(null);
     setOpponentConnected(false);
@@ -429,13 +436,13 @@ export default function LipReader({
   }
 
   async function connectAsHost(desiredRoomId: string) {
-    cleanup();
+    cleanupPeer();
     setRole("host");
     setOpponentConnected(false);
     gameStateRef.current = initialLipReaderState();
     gameStateRef.current.hostName = nameRef.current.slice(0, 24);
 
-    const stream = await ensureLocalCamera({ force: true });
+    const stream = await ensureLocalCamera();
 
     let rid: string;
     let peer: any;
@@ -543,13 +550,13 @@ export default function LipReader({
   }
 
   async function connectAsGuest(rid: string) {
-    cleanup();
+    cleanupPeer();
     lastGuestSeqRef.current = -1;
     setRole("guest");
     setOpponentConnected(false);
     gameStateRef.current = initialLipReaderState();
 
-    const stream = await ensureLocalCamera({ force: true });
+    const stream = await ensureLocalCamera();
 
     const peer = await createGuestPeer();
     peerRef.current = peer;
@@ -602,22 +609,32 @@ export default function LipReader({
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
     }
-    setStatus("Connecting…");
+    setPeerSetup(false);
+    setMatchmaking(false);
+    setUiMenu(false);
+    setRole(r);
+    setRoomId(peerRoomId);
+    setOpponentLeftMatch(false);
+    setOpponentConnected(false);
+    gameStateRef.current = initialLipReaderState();
+    if (r === "host") {
+      gameStateRef.current.hostName = nameRef.current.slice(0, 24);
+    }
+    setStatus("Teammate found.");
     try {
       if (r === "host") {
         await connectAsHost(peerRoomId);
       } else {
         await connectAsGuest(peerRoomId);
       }
-      setOpponentLeftMatch(false);
-      setUiMenu(false);
-      setMatchmaking(false);
-      setStatus("Teammate connected.");
     } catch {
       cleanup();
       setStatus("Connection failed.");
       setUiMenu(true);
       setMatchmaking(false);
+      setPeerSetup(false);
+      setRole(null);
+      setRoomId(null);
     }
   }
 
@@ -629,8 +646,19 @@ export default function LipReader({
     if (!privateInviteError || privateInviteLoading) return;
     setUiMenu(true);
     setMatchmaking(false);
+    setPeerSetup(false);
     setStatus(privateInviteError);
   }, [privateInviteError, privateInviteLoading]);
+
+  useEffect(() => {
+    setPeerSetup(privateInviteLoading);
+  }, [privateInviteLoading]);
+
+  useEffect(() => {
+    if (matchmaking) return;
+    void ensureLocalCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- warm stream on menu / peer_setup / in-session
+  }, [uiMenu, peerSetup, matchmaking]);
 
   useEffect(() => {
     if (!privateMatch || privateAppliedRef.current) return;
@@ -678,6 +706,7 @@ export default function LipReader({
     }
     void leaveQueue();
     setMatchmaking(false);
+    setPeerSetup(false);
     setUiMenu(true);
     setStatus("");
   }
@@ -760,19 +789,19 @@ export default function LipReader({
 
   const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY.charades;
 
+  const inSession = !uiMenu && !matchmaking;
+
   const showPrivateInviteWait =
-    !uiMenu && role === "host" && !!privateInviteCode && !opponentConnected;
+    inSession && role === "host" && !!privateInviteCode && !opponentConnected;
 
-  const showDuelHud = !uiMenu;
+  const showDuelHud = !uiMenu || peerSetup;
 
-  const opponentHudDisplay =
-    matchmaking && !opponentConnected
-      ? "Finding teammate"
-      : opponentName.trim()
-        ? opponentName.trim()
-        : "Connecting";
-  const opponentHudUsername =
-    matchmaking && !opponentConnected ? "" : hudUsernameForRemote(opponentHudDisplay);
+  const opponentHudDisplay = matchmaking
+    ? "Finding teammate"
+    : opponentName.trim()
+      ? opponentName.trim()
+      : "Connecting";
+  const opponentHudUsername = matchmaking ? "" : hudUsernameForRemote(opponentHudDisplay);
 
   return (
     <main className={gp.surfaceRoot}>
@@ -783,7 +812,7 @@ export default function LipReader({
           opponent={{
             displayName: opponentHudDisplay,
             username: opponentHudUsername,
-            online: opponentConnected || matchmaking,
+            online: opponentConnected || matchmaking || peerSetup,
           }}
           you={{
             displayName: profile.displayName.trim() || "Guest",
@@ -809,7 +838,7 @@ export default function LipReader({
             <div className={`${gp.surfacePane} ${gp.surfacePaneOpponent}`}>
               <video ref={remoteVideoRef} className={gp.surfaceFeed} playsInline autoPlay />
             </div>
-            {!uiMenu && !matchmaking && opponentConnected && (gs.phase === "playing" || gs.phase === "countdown") ? (
+            {inSession && opponentConnected && (gs.phase === "playing" || gs.phase === "countdown") ? (
               <div className={gp.surfaceCenterHud} aria-live="polite">
                 {gs.phase === "countdown" ? <span className={gp.surfaceCenterMuted}>Team round starting</span> : null}
                 {gs.phase === "playing" ? (
@@ -839,14 +868,14 @@ export default function LipReader({
             ) : null}
           </div>
 
-          {!uiMenu && !matchmaking && opponentConnected && gs.phase === "playing" ? (
+          {inSession && opponentConnected && gs.phase === "playing" ? (
             <div className={gp.hintFloat}>
               {iAmCommunicator ? "Mic off while you clue — go big." : "Their mic is off while they clue — read their lips."}
               {gs.guesserHint && iAmGuesser ? <span className={styles.hintNope}> {gs.guesserHint}</span> : null}
             </div>
           ) : null}
 
-          {!uiMenu && !matchmaking && opponentConnected && gs.phase === "session_complete" ? (
+          {inSession && opponentConnected && gs.phase === "session_complete" ? (
             <div className={gp.resultStrip}>
               <div className={gp.resultKicker}>Team run</div>
               <div className={gp.resultTitle}>TEAM SCORE: {gs.teamScore}</div>
@@ -896,16 +925,32 @@ export default function LipReader({
             </div>
           ) : null}
 
-          {!uiMenu && !matchmaking && opponentConnected ? (
-            <div className={gp.surfaceDock}>
-              {gs.phase === "lobby" ? (
-                <>
-                  <button type="button" className={gp.surfacePillGhost} onClick={toggleLobbyReady}>
+          {inSession && gs.phase === "lobby" && !showPrivateInviteWait ? (
+            <div className={gp.floatingGlass}>
+              <div className={gp.glassPanel}>
+                <div className={gp.resultKicker}>Lobby</div>
+                <div className={gp.resultTitle}>Teammate found</div>
+                <div className={gp.resultDetail}>
+                  {opponentConnected
+                    ? "Tap ready when your camera is set. The round starts when both teammates are ready."
+                    : "Connecting…"}
+                </div>
+                {opponentConnected ? (
+                  <button
+                    type="button"
+                    className={gp.surfacePill}
+                    style={{ marginTop: "14px", width: "100%" }}
+                    onClick={toggleLobbyReady}
+                  >
                     {lobbyReadyLabel}
                   </button>
-                  <span className={gp.dockCaption}>Match begins when both teammates are ready.</span>
-                </>
-              ) : null}
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {inSession && opponentConnected ? (
+            <div className={gp.surfaceDock}>
               {gs.phase === "playing" ? (
                 <>
                   {iAmGuesser ? (
@@ -923,7 +968,7 @@ export default function LipReader({
         </div>
       </div>
 
-      {LIP_READER_UI_DEBUG && !uiMenu && opponentConnected ? (
+      {LIP_READER_UI_DEBUG && inSession && opponentConnected ? (
         <div className={styles.debugStrip}>
           <div>roundId {gs.roundId}</div>
           <div>phase {gs.phase}</div>

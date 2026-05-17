@@ -46,7 +46,7 @@ const BLINK_COOLDOWN_MS = 200;
 const MIN_BRICK_PX = 40;
 const MIN_BRICK_H_PX = 24;
 
-type UiPhase = "menu" | "matchmaking" | "lobby" | "playing" | "gameover";
+type UiPhase = "menu" | "peer_setup" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
 
 function log(...args: unknown[]) {
@@ -192,15 +192,19 @@ export default function StackUp({
   const { profile } = useGameFaceProfile();
   const clientId = profile.userId;
 
-  const initialPhase: UiPhase =
-    autoJoinPublicQueue || fromRandomMatch || privateInviteLoading ? "matchmaking" : "menu";
+  const initialPhase: UiPhase = privateInviteLoading
+    ? "peer_setup"
+    : autoJoinPublicQueue || fromRandomMatch
+      ? "matchmaking"
+      : "menu";
   const [uiPhase, setUiPhase] = useState<UiPhase>(initialPhase);
   const uiPhaseRef = useRef<UiPhase>(initialPhase);
   useEffect(() => {
     uiPhaseRef.current = uiPhase;
   }, [uiPhase]);
 
-  const showArena = uiPhase === "lobby" || uiPhase === "playing" || uiPhase === "gameover";
+  const showArena =
+    uiPhase === "peer_setup" || uiPhase === "lobby" || uiPhase === "playing" || uiPhase === "gameover";
   const [role, setRole] = useState<Role | null>(null);
   const roleRef = useRef<Role | null>(null);
   useEffect(() => {
@@ -247,6 +251,7 @@ export default function StackUp({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const landmarkerRef = useRef<Awaited<ReturnType<typeof createFaceLandmarker>> | null>(null);
   const blinkDetRef = useRef<ReturnType<typeof createBlinkEdgeDetector> | null>(null);
+  const landmarkerInitRef = useRef<Promise<void> | null>(null);
   const hostGuestDataWiredRef = useRef<WeakSet<DataConnection>>(new WeakSet());
   const guestBrickEpochRef = useRef(0);
   type GuestOptimisticStop = {
@@ -304,7 +309,18 @@ export default function StackUp({
   }
 
   async function ensureLocalCamera() {
-    if (localStreamRef.current) return localStreamRef.current;
+    if (localStreamRef.current) {
+      const stream = localStreamRef.current;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        void localVideoRef.current.play().catch(() => {});
+      }
+      if (pipVideoRef.current) {
+        pipVideoRef.current.srcObject = stream;
+        void pipVideoRef.current.play().catch(() => {});
+      }
+      return stream;
+    }
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
@@ -339,8 +355,8 @@ export default function StackUp({
     }
   }
 
-  function cleanup() {
-    log("disconnect cleanup");
+  function cleanupPeer() {
+    log("disconnect peer cleanup");
     if (matchPollRef.current) {
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
@@ -358,17 +374,40 @@ export default function StackUp({
     }
     peerRef.current = null;
     dataRef.current = null;
-    const s = localStreamRef.current;
-    if (s) for (const t of s.getTracks()) t.stop();
-    localStreamRef.current = null;
     hostRtRef.current = null;
-    landmarkerRef.current = null;
-    blinkDetRef.current = null;
     pendingRemoteStreamRef.current = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setCenterInstrOpacity(0);
     guestOptimisticStopRef.current = null;
     guestStopSentForEpochRef.current = -1;
+  }
+
+  function cleanup() {
+    cleanupPeer();
+    const s = localStreamRef.current;
+    if (s) for (const t of s.getTracks()) t.stop();
+    localStreamRef.current = null;
+    landmarkerRef.current = null;
+    blinkDetRef.current = null;
+    landmarkerInitRef.current = null;
+  }
+
+  async function ensureVisionStack() {
+    if (!blinkDetRef.current) {
+      blinkDetRef.current = createBlinkEdgeDetector({ threshold: 0.2, cooldownMs: BLINK_COOLDOWN_MS });
+      blinkDetRef.current.reset();
+    }
+    if (landmarkerRef.current) return;
+    if (!landmarkerInitRef.current) {
+      landmarkerInitRef.current = (async () => {
+        try {
+          landmarkerRef.current = await createFaceLandmarker();
+        } catch {
+          landmarkerRef.current = null;
+        }
+      })();
+    }
+    await landmarkerInitRef.current;
   }
 
   function sendToHost(msg: GuestToHostStackUpMsg) {
@@ -568,7 +607,7 @@ export default function StackUp({
   };
 
   async function connectAsHost(desiredRoomId: string) {
-    cleanup();
+    cleanupPeer();
     setStatus("Creating room…");
     setRole("host");
     setOpponentConnected(false);
@@ -669,7 +708,7 @@ export default function StackUp({
   }
 
   async function connectAsGuest(rid: string) {
-    cleanup();
+    cleanupPeer();
     lastGuestSeqRef.current = -1;
     lastGuestStateSentAtRef.current = performance.now();
     guestStopSentForEpochRef.current = -1;
@@ -739,19 +778,13 @@ export default function StackUp({
       window.clearInterval(matchPollRef.current);
       matchPollRef.current = null;
     }
-    setStatus("Connecting…");
+    setOpponentLeftMatch(false);
+    setRole(r);
+    setStatus("Opponent found.");
+    setUiPhase("lobby");
     try {
-      setOpponentLeftMatch(false);
-      setUiPhase("lobby");
       if (r === "host") await connectAsHost(peerRoomId);
       else await connectAsGuest(peerRoomId);
-      try {
-        landmarkerRef.current = await createFaceLandmarker();
-      } catch {
-        landmarkerRef.current = null;
-      }
-      blinkDetRef.current = createBlinkEdgeDetector({ threshold: 0.2, cooldownMs: BLINK_COOLDOWN_MS });
-      blinkDetRef.current.reset();
     } catch {
       cleanup();
       setStatus("Connection failed. Try again.");
@@ -771,6 +804,16 @@ export default function StackUp({
     privateAppliedRef.current = true;
     void applyMatch(privateMatch.peerRoomId, privateMatch.role);
   }, [privateMatch]);
+
+  useEffect(() => {
+    if (privateInviteLoading) setUiPhase("peer_setup");
+  }, [privateInviteLoading]);
+
+  useEffect(() => {
+    if (uiPhase === "menu" || uiPhase === "matchmaking") return;
+    void ensureLocalCamera();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- warm camera on menu / peer_setup / lobby
+  }, [uiPhase]);
 
   async function findMatch() {
     if (matchPollRef.current) {
@@ -958,7 +1001,13 @@ export default function StackUp({
 
   useEffect(() => {
     if (!showArena) return;
-    const id = window.setInterval(() => visionStep(performance.now()), 33);
+    const id = window.setInterval(() => {
+      const ph = getDrawState().phase;
+      if (ph === "countdown" || ph === "moving") {
+        void ensureVisionStack();
+      }
+      visionStep(performance.now());
+    }, 33);
     return () => window.clearInterval(id);
   }, [showArena]);
 
@@ -978,6 +1027,7 @@ export default function StackUp({
   const introCfg = introSlug ? GAME_INTRO_REGISTRY[introSlug] : GAME_INTRO_REGISTRY["stack-up"];
   const showMenu = uiPhase === "menu";
   const showMatchmaking = uiPhase === "matchmaking";
+  const showPeerSetup = uiPhase === "peer_setup";
   const showLobby = uiPhase === "lobby";
   const showGameOver = uiPhase === "gameover";
   const showPrivateInviteWait =
@@ -1116,7 +1166,7 @@ export default function StackUp({
           </div>
         ) : null}
 
-        {showMenu && !showMatchmaking ? (
+        {showMenu && !showMatchmaking && !showPeerSetup ? (
           <GameIntroOverlay
             placement="viewport"
             accent={introCfg.accent}
