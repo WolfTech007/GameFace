@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
 import { GFButton } from "@/components/gameface";
+import { ProfileAvatar } from "@/components/gameface/ProfileAvatar";
 import styles from "./page.module.css";
 
 export function HomeTop() {
@@ -30,7 +31,12 @@ export function HomeTop() {
 
       <div className={styles.homeTopRow}>
         <Link href="/profile" className={styles.homeProfile}>
-          <div className={styles.homeAvatar} aria-hidden />
+          <ProfileAvatar
+            avatarUrl={profile.avatarUrl}
+            displayName={profile.displayName}
+            size="sm"
+            className={styles.homeAvatar}
+          />
           <div className={styles.homeProfileText}>
             <div className={styles.homeHandle}>@{profile.username}</div>
             <div className={styles.homeLevelStats}>

@@ -83,10 +83,6 @@
 
 .homeAvatar {
   flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  border-radius: 999px;
-  background: linear-gradient(145deg, rgba(124, 92, 255, 0.5), rgba(56, 189, 248, 0.42));
   box-shadow:
     0 0 0 2px rgba(56, 189, 248, 0.55),
     0 0 0 3px rgba(167, 139, 250, 0.35),

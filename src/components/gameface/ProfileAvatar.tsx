@@ -5,7 +5,7 @@ import styles from "./ProfileAvatar.module.css";
 export type ProfileAvatarProps = {
   avatarUrl?: string | null;
   displayName?: string;
-  size?: "md" | "lg";
+  size?: "sm" | "md" | "lg";
   className?: string;
 };
 
@@ -15,7 +15,8 @@ export function ProfileAvatar({
   size = "md",
   className,
 }: ProfileAvatarProps) {
-  const sizeClass = size === "lg" ? styles.lg : styles.md;
+  const sizeClass =
+    size === "lg" ? styles.lg : size === "sm" ? styles.sm : styles.md;
   const initial =
     displayName?.trim().charAt(0).toUpperCase() ||
     "?";

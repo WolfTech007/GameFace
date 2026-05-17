@@ -19,7 +19,7 @@ function isSignedInProfile(username: string | undefined): boolean {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { profile, refreshRemoteProfile, setProfile } = useGameFaceProfile();
+  const { profile, refresh, refreshRemoteProfile, setProfile } = useGameFaceProfile();
   const signedIn = isSignedInProfile(profile.username);
 
   const [displayName, setDisplayName] = useState(profile.displayName);
@@ -73,6 +73,7 @@ export default function ProfilePage() {
         avatarUrl: updated.avatarUrl ?? undefined,
       });
       await refreshRemoteProfile();
+      refresh();
       setPendingFile(null);
       setAvatarPreview(updated.avatarUrl);
       setSuccess("Profile saved.");
@@ -88,6 +89,7 @@ export default function ProfilePage() {
     displayName,
     bio,
     setProfile,
+    refresh,
     refreshRemoteProfile,
   ]);
 
