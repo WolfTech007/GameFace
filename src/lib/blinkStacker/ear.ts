@@ -51,6 +51,8 @@ export function combinedEar(pts: NormalizedLandmark[] | undefined): number {
 
 export type BlinkEdgeDetector = {
   reset: () => void;
+  /** Update baseline EAR without firing (avoids false edges after phase gaps). */
+  prime: (ear: number) => void;
   /** Returns true once when a blink edge is detected (subject to cooldown). */
   tick: (ear: number, nowMs: number) => boolean;
 };
@@ -67,6 +69,9 @@ export function createBlinkEdgeDetector(opts: { threshold: number; cooldownMs: n
     reset() {
       prevEar = 1;
       lastFireMs = -Infinity;
+    },
+    prime(ear: number) {
+      prevEar = ear;
     },
     tick(ear: number, nowMs: number): boolean {
       const crossed = ear < opts.threshold && prevEar >= opts.threshold;

@@ -247,6 +247,7 @@ export default function StackUp({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const landmarkerRef = useRef<Awaited<ReturnType<typeof createFaceLandmarker>> | null>(null);
   const blinkDetRef = useRef<ReturnType<typeof createBlinkEdgeDetector> | null>(null);
+  const hostGuestDataWiredRef = useRef<WeakSet<DataConnection>>(new WeakSet());
   const guestBrickEpochRef = useRef(0);
   type GuestOptimisticStop = {
     brickEpoch: number;
@@ -347,6 +348,7 @@ export default function StackUp({
     void leaveQueue();
     hostGuestConnUnsubRef.current?.();
     hostGuestConnUnsubRef.current = null;
+    hostGuestDataWiredRef.current = new WeakSet();
     if (peerRef.current) {
       try {
         peerRef.current.destroy();
@@ -405,6 +407,7 @@ export default function StackUp({
     setOpponentLeftMatch(false);
     lastBrickEpochStoppedRef.current = -1;
     lastSeenBrickEpochRef.current = -1;
+    blinkDetRef.current?.reset();
     broadcastAuthoritativeState();
     bumpUi();
   }
@@ -514,17 +517,26 @@ export default function StackUp({
   const visionStep = (ts: number) => {
     const video = localVideoRef.current;
     const lm = landmarkerRef.current;
-    if (!video || !lm || video.readyState < 2) return;
+    const det = blinkDetRef.current;
+    if (!video || !lm || video.readyState < 2 || !det) return;
+
     const gs = getDrawState();
-    if (gs.phase !== "moving") return;
-    const iAmBlue = roleRef.current === "host";
-    const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
-    if (!myTurn) return;
     const res = lm.detectForVideo(video, ts);
     const pts = res.faceLandmarks?.[0] as NormalizedLandmark[] | undefined;
     const ear = combinedEar(pts);
-    const det = blinkDetRef.current;
-    if (!det) return;
+
+    if (gs.phase !== "moving") {
+      det.prime(ear);
+      return;
+    }
+
+    const iAmBlue = roleRef.current === "host";
+    const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
+    if (!myTurn) {
+      det.prime(ear);
+      return;
+    }
+
     if (det.tick(ear, ts)) {
       hideHintUntilRef.current = performance.now() + 1200;
       if (roleRef.current === "host") hostHandleLocalStop();
@@ -606,36 +618,41 @@ export default function StackUp({
             setOpponentLeftMatch(false);
             lastBrickEpochStoppedRef.current = -1;
             lastSeenBrickEpochRef.current = -1;
+            blinkDetRef.current?.reset();
           }
 
           dataRef.current = conn;
           setOpponentConnected(true);
           setStatus("Opponent connected");
 
-          conn.on("data", (raw: unknown) => {
-            const msg = raw as GuestToHostStackUpMsg;
-            const rtInner = hostRtRef.current;
-            if (!rtInner) return;
-            if (msg.t === "ready") {
-              rtInner.state.ready.guest = msg.ready;
-              broadcastAuthoritativeState();
-              bumpUi();
-            } else if (msg.t === "rematch") {
-              if (rtInner.state.phase === "gameover") {
-                rtInner.state.rematch.guest = msg.want;
+          if (!hostGuestDataWiredRef.current.has(conn)) {
+            hostGuestDataWiredRef.current.add(conn);
+
+            conn.on("data", (raw: unknown) => {
+              const msg = raw as GuestToHostStackUpMsg;
+              const rtInner = hostRtRef.current;
+              if (!rtInner) return;
+              if (msg.t === "ready") {
+                rtInner.state.ready.guest = msg.ready;
                 broadcastAuthoritativeState();
                 bumpUi();
-                hostTryRematch();
+              } else if (msg.t === "rematch") {
+                if (rtInner.state.phase === "gameover") {
+                  rtInner.state.rematch.guest = msg.want;
+                  broadcastAuthoritativeState();
+                  bumpUi();
+                  hostTryRematch();
+                }
+              } else if (msg.t === "stopAttempt") {
+                hostHandleStopFromNetwork(msg.brickEpoch);
               }
-            } else if (msg.t === "stopAttempt") {
-              hostHandleStopFromNetwork(msg.brickEpoch);
-            }
-          });
+            });
 
-          conn.on("close", () => {
-            setOpponentConnected(false);
-            setOpponentLeftMatch(true);
-          });
+            conn.on("close", () => {
+              setOpponentConnected(false);
+              setOpponentLeftMatch(true);
+            });
+          }
 
           if (conn.open) broadcastAuthoritativeState();
           else conn.on("open", broadcastAuthoritativeState);
@@ -838,6 +855,7 @@ export default function StackUp({
         if (s.brickEpoch !== lastSeenBrickEpochRef.current) {
           lastSeenBrickEpochRef.current = s.brickEpoch;
           lastBrickEpochStoppedRef.current = -1;
+          blinkDetRef.current?.reset();
           const l = layoutFromCanvasHeight(h);
           const blockH = Math.max(MIN_BRICK_H_PX, l.blockH * 1.2);
           const gap = Math.max(6, l.gap);
@@ -856,6 +874,9 @@ export default function StackUp({
         const now = nowMs();
         const phaseBeforeTick = s.phase;
         hostTickTransitions(rt, now);
+        if (s.phase === "moving" && phaseBeforeTick !== "moving") {
+          blinkDetRef.current?.reset();
+        }
         if ((s.phase === "countdown" || s.phase === "moving" || s.phase === "gameover") && uiPhaseRef.current === "lobby") {
           setUiPhase("playing");
         }
