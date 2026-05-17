@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { profileViewPath } from "@/lib/gameface/profileRoutes";
 import { GFButton } from "@/components/gameface";
 import { ProfileAvatar } from "@/components/gameface/ProfileAvatar";
 import styles from "./page.module.css";
@@ -30,7 +31,14 @@ export function HomeTop() {
       </div>
 
       <div className={styles.homeTopRow}>
-        <Link href="/profile" className={styles.homeProfile}>
+        <Link
+          href={
+            profile.username.startsWith("guest_")
+              ? "/profile"
+              : profileViewPath(profile.username)
+          }
+          className={styles.homeProfile}
+        >
           <ProfileAvatar
             avatarUrl={profile.avatarUrl}
             displayName={profile.displayName}

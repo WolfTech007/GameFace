@@ -17,7 +17,10 @@ export function GFBottomNav({ activeHref = "/" }: { activeHref?: string }) {
     <nav className={styles.nav} aria-label="Main">
       <div className={styles.inner}>
         {items.map((item) => {
-          const active = item.href === activeHref;
+          const active =
+            item.href === activeHref ||
+            (item.href === "/profile" &&
+              (activeHref === "/profile" || activeHref.startsWith("/profile/")));
           return (
             <Link
               key={item.href}

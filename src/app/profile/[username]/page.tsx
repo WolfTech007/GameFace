@@ -7,6 +7,7 @@ import { GFBottomNav } from "@/components/gameface";
 import { ProfileAvatar } from "@/components/gameface/ProfileAvatar";
 import { ProfilePlaceholderSections } from "@/components/gameface/ProfilePlaceholderSections";
 import { useGameFaceProfile } from "@/contexts/GameFaceProfileContext";
+import { PROFILE_EDIT_PATH } from "@/lib/gameface/profileRoutes";
 import { fetchProfileByUsername, type PublicProfile } from "@/lib/gameface/profilesClient";
 import styles from "./page.module.css";
 
@@ -80,7 +81,7 @@ export default function PublicProfilePage() {
   return (
     <div className={styles.shell}>
       <main className={styles.root}>
-        <PublicProfileHeader backHref="/friends" />
+        <PublicProfileHeader backHref={isOwnProfile ? "/" : "/friends"} />
 
         {loading ? <p className={styles.empty}>Loading…</p> : null}
         {error ? <p className={styles.bannerErr}>{error}</p> : null}
@@ -102,7 +103,7 @@ export default function PublicProfilePage() {
                 <p className={styles.bioMuted}>No bio yet.</p>
               )}
               {isOwnProfile ? (
-                <Link href="/profile" className={styles.editLink}>
+                <Link href={PROFILE_EDIT_PATH} className={styles.editLink}>
                   Edit profile
                 </Link>
               ) : null}
