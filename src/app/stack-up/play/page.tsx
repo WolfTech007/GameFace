@@ -2,9 +2,11 @@
 
 import StackUp from "@/components/StackUp";
 import { GamePlayEntrance } from "@/components/gameface/GamePlayEntrance";
+import playStyles from "./play.module.css";
 
 export default function StackUpPlayPage() {
   return (
+    <div className={playStyles.playRoute}>
     <GamePlayEntrance expectedPrivateGameSlug="stack-up">
       {({
         autoJoinPublicQueue,
@@ -25,5 +27,6 @@ export default function StackUpPlayPage() {
         />
       )}
     </GamePlayEntrance>
+    </div>
   );
 }

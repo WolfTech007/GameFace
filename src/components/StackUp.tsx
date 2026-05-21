@@ -49,8 +49,14 @@ const MIN_BRICK_H_PX = 24;
 type UiPhase = "menu" | "peer_setup" | "matchmaking" | "lobby" | "playing" | "gameover";
 type Role = "host" | "guest";
 
+const DEV_LOG = process.env.NODE_ENV === "development";
+
 function log(...args: unknown[]) {
   console.log("[StackUp]", ...args);
+}
+
+function devLog(...args: unknown[]) {
+  if (DEV_LOG) log(...args);
 }
 
 function nowMs() {
@@ -254,14 +260,8 @@ export default function StackUp({
   const landmarkerInitRef = useRef<Promise<void> | null>(null);
   const hostGuestDataWiredRef = useRef<WeakSet<DataConnection>>(new WeakSet());
   const guestBrickEpochRef = useRef(0);
-  type GuestOptimisticStop = {
-    brickEpoch: number;
-    mcn: number;
-    flashUntil: number;
-    startedAt: number;
-    towerLen: number;
-  };
-  const guestOptimisticStopRef = useRef<GuestOptimisticStop | null>(null);
+  /** Guest: lock draw position at stop until host confirms (no post-stop glide). */
+  const guestFrozenMcnRef = useRef<number | null>(null);
   const guestStopSentForEpochRef = useRef(-1);
   const [centerInstrOpacity, setCenterInstrOpacity] = useState(0);
 
@@ -301,6 +301,23 @@ export default function StackUp({
 
   useEffect(() => {
     reduceMotionRef.current = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  }, []);
+
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, []);
+
+  useEffect(() => {
+    const prevHtml = document.documentElement.style.overflow;
+    const prevBody = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = prevHtml;
+      document.body.style.overflow = prevBody;
+    };
   }, []);
 
   function getDrawState(): StackUpNetState {
@@ -378,7 +395,7 @@ export default function StackUp({
     pendingRemoteStreamRef.current = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     setCenterInstrOpacity(0);
-    guestOptimisticStopRef.current = null;
+    guestFrozenMcnRef.current = null;
     guestStopSentForEpochRef.current = -1;
   }
 
@@ -408,6 +425,27 @@ export default function StackUp({
       })();
     }
     await landmarkerInitRef.current;
+  }
+
+  async function initVisionForRole() {
+    try {
+      await ensureVisionStack();
+      if (landmarkerRef.current) {
+        devLog("face tracking initialized", { role: roleRef.current });
+      } else {
+        devLog("face tracking failed", { role: roleRef.current });
+      }
+    } catch {
+      devLog("face tracking failed", { role: roleRef.current });
+    }
+  }
+
+  function visionVideoEl(): HTMLVideoElement | null {
+    const pip = pipVideoRef.current;
+    if (pip?.srcObject && pip.readyState >= 2) return pip;
+    const hidden = localVideoRef.current;
+    if (hidden?.srcObject && hidden.readyState >= 2) return hidden;
+    return pip ?? hidden;
   }
 
   function sendToHost(msg: GuestToHostStackUpMsg) {
@@ -490,39 +528,49 @@ export default function StackUp({
     setStatus("Idle");
   }
 
-  function clearGuestOptimisticStop() {
-    guestOptimisticStopRef.current = null;
+  function clearGuestFrozenMcn() {
+    guestFrozenMcnRef.current = null;
   }
 
-  function guestPerformStopAttempt() {
-    if (roleRef.current !== "guest") return;
-    const t = performance.now();
-    const s = netRef.current;
-    if (s.phase !== "moving" || s.activeBlue) return;
+  function guestMovingMcnSnapshot(s: StackUpNetState, arenaW: number): number {
+    const elapsedSec = Math.max(0, Math.min(1 / 60, (performance.now() - lastGuestStateSentAtRef.current) / 1000));
+    return integrateMovingMcnSnapshot(s, arenaW, elapsedSec);
+  }
+
+  function performStop(source: "blink" | "tap") {
+    const gs = getDrawState();
+    if (gs.phase !== "moving") return;
+    const iAmBlue = roleRef.current === "host";
+    const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
+    if (!myTurn) return;
+
+    hideHintUntilRef.current = performance.now() + 1200;
+
+    if (roleRef.current === "host") {
+      const rt = hostRtRef.current;
+      if (!rt) return;
+      const s = rt.state;
+      if (s.brickEpoch === lastBrickEpochStoppedRef.current) return;
+      lastBrickEpochStoppedRef.current = s.brickEpoch;
+      devLog(source === "blink" ? "blink detected" : "tap detected", { role: "host", brickEpoch: s.brickEpoch });
+      hostApplyStop(rt, nowMs());
+      devLog("brick locked", { role: "host", mcn: rt.state.mcn, brickEpoch: s.brickEpoch });
+      if (rt.state.phase === "gameover") setUiPhase("gameover");
+      broadcastAuthoritativeState();
+      bumpUi();
+      return;
+    }
+
     const epoch = guestBrickEpochRef.current;
     if (epoch === guestStopSentForEpochRef.current) return;
-
     const canvas = canvasRef.current;
-    const w = canvas?.width ?? 360;
-    const arenaWDraw = Math.max(1, w * 0.88);
-    const elapsedSec = Math.max(0, Math.min(0.12, (t - lastGuestStateSentAtRef.current) / 1000));
-    const mcn = integrateMovingMcnSnapshot(s, arenaWDraw, elapsedSec);
-
-    guestOptimisticStopRef.current = {
-      brickEpoch: epoch,
-      mcn,
-      flashUntil: t + 240,
-      startedAt: t,
-      towerLen: s.tower.length,
-    };
+    const arenaW = Math.max(1, (canvas?.width ?? 360) * 0.88);
+    const frozenMcn = guestMovingMcnSnapshot(netRef.current, arenaW);
+    guestFrozenMcnRef.current = frozenMcn;
     guestStopSentForEpochRef.current = epoch;
-
-    sendToHost({
-      t: "stopAttempt",
-      brickEpoch: epoch,
-      clientMcn: mcn,
-      clientStopAt: t,
-    });
+    devLog(source === "blink" ? "blink detected" : "tap detected", { role: "guest", brickEpoch: epoch });
+    devLog("brick locked", { role: "guest", mcn: frozenMcn, brickEpoch: epoch });
+    sendToHost({ t: "stopAttempt", brickEpoch: epoch });
   }
 
   function hostHandleStopFromNetwork(brickEpoch: number) {
@@ -532,19 +580,7 @@ export default function StackUp({
     if (s.phase !== "moving" || s.activeBlue) return;
     if (brickEpoch !== s.brickEpoch || brickEpoch === lastBrickEpochStoppedRef.current) return;
     lastBrickEpochStoppedRef.current = brickEpoch;
-    hostApplyStop(rt, nowMs());
-    if (rt.state.phase === "gameover") setUiPhase("gameover");
-    broadcastAuthoritativeState();
-    bumpUi();
-  }
-
-  function hostHandleLocalStop() {
-    const rt = hostRtRef.current;
-    if (!rt) return;
-    const s = rt.state;
-    if (s.phase !== "moving" || !s.activeBlue) return;
-    if (s.brickEpoch === lastBrickEpochStoppedRef.current) return;
-    lastBrickEpochStoppedRef.current = s.brickEpoch;
+    devLog("brick locked", { role: "host", source: "guest-stop", mcn: s.mcn, brickEpoch });
     hostApplyStop(rt, nowMs());
     if (rt.state.phase === "gameover") setUiPhase("gameover");
     broadcastAuthoritativeState();
@@ -554,7 +590,7 @@ export default function StackUp({
   const tryStopRef = useRef<() => void>(() => {});
 
   const visionStep = (ts: number) => {
-    const video = localVideoRef.current;
+    const video = visionVideoEl();
     const lm = landmarkerRef.current;
     const det = blinkDetRef.current;
     if (!video || !lm || video.readyState < 2 || !det) return;
@@ -577,9 +613,7 @@ export default function StackUp({
     }
 
     if (det.tick(ear, ts)) {
-      hideHintUntilRef.current = performance.now() + 1200;
-      if (roleRef.current === "host") hostHandleLocalStop();
-      else guestPerformStopAttempt();
+      performStop("blink");
     }
   };
 
@@ -595,16 +629,7 @@ export default function StackUp({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  tryStopRef.current = () => {
-    const gs = getDrawState();
-    if (gs.phase !== "moving") return;
-    const iAmBlue = roleRef.current === "host";
-    const myTurn = (gs.activeBlue && iAmBlue) || (!gs.activeBlue && !iAmBlue);
-    if (!myTurn) return;
-    hideHintUntilRef.current = performance.now() + 1200;
-    if (roleRef.current === "host") hostHandleLocalStop();
-    else guestPerformStopAttempt();
-  };
+  tryStopRef.current = () => performStop("tap");
 
   async function connectAsHost(desiredRoomId: string) {
     cleanupPeer();
@@ -712,7 +737,7 @@ export default function StackUp({
     lastGuestSeqRef.current = -1;
     lastGuestStateSentAtRef.current = performance.now();
     guestStopSentForEpochRef.current = -1;
-    guestOptimisticStopRef.current = null;
+    guestFrozenMcnRef.current = null;
     setStatus("Joining…");
     setRole("guest");
     setOpponentConnected(false);
@@ -733,18 +758,12 @@ export default function StackUp({
       lastGuestSeqRef.current = msg.seq;
       lastGuestStateSentAtRef.current = msg.sentAt;
       const authoritative = cloneStackUpState(msg.state);
-      const opt = guestOptimisticStopRef.current;
-      if (opt) {
-        const epochAdvanced = authoritative.brickEpoch !== opt.brickEpoch;
-        const placed = authoritative.tower.length > opt.towerLen;
-        const ended = authoritative.phase === "gameover";
-        const notMoving = authoritative.phase !== "moving";
-        if (epochAdvanced || placed || ended || notMoving) clearGuestOptimisticStop();
-      }
-      const locked = guestStopSentForEpochRef.current;
-      if (locked !== -1) {
-        const stillSameBrick = authoritative.phase === "moving" && authoritative.brickEpoch === locked;
-        if (!stillSameBrick) guestStopSentForEpochRef.current = -1;
+      if (
+        authoritative.brickEpoch !== guestStopSentForEpochRef.current ||
+        authoritative.phase !== "moving"
+      ) {
+        guestStopSentForEpochRef.current = -1;
+        clearGuestFrozenMcn();
       }
       netRef.current = authoritative;
       guestBrickEpochRef.current = authoritative.brickEpoch;
@@ -785,6 +804,7 @@ export default function StackUp({
     try {
       if (r === "host") await connectAsHost(peerRoomId);
       else await connectAsGuest(peerRoomId);
+      await initVisionForRole();
     } catch {
       cleanup();
       setStatus("Connection failed. Try again.");
@@ -876,6 +896,7 @@ export default function StackUp({
   }, [showArena]);
 
   useEffect(() => {
+    if (!role && !opponentConnected) return;
     let raf = 0;
     const loop = (ts: number) => {
       raf = requestAnimationFrame(loop);
@@ -946,30 +967,24 @@ export default function StackUp({
         }
       }
 
+      if (uiPhaseRef.current !== "menu" && uiPhaseRef.current !== "matchmaking") {
+        void ensureVisionStack();
+        visionStep(ts);
+      }
+
       if (!canvas || !ctx) return;
-      const clock = performance.now();
       const ds = getDrawState();
       const arenaWDraw = Math.max(1, w * 0.88);
       let toDraw = ds;
-      if (roleRef.current === "guest" && ds.phase === "moving") {
-        const elapsedSec = Math.max(0, Math.min(0.12, (clock - lastGuestStateSentAtRef.current) / 1000));
-        const blend = cloneStackUpState(ds);
-        blend.mcn = integrateMovingMcnSnapshot(ds, arenaWDraw, elapsedSec);
-        toDraw = blend;
-
-        let o = guestOptimisticStopRef.current;
-        if (o && clock - o.startedAt > 750) {
-          clearGuestOptimisticStop();
-          o = null;
-        }
-        if (
-          o &&
-          !ds.activeBlue &&
-          o.brickEpoch === ds.brickEpoch &&
-          o.towerLen === ds.tower.length
-        ) {
-          toDraw.mcn = o.mcn;
-          if (clock < o.flashUntil) toDraw.pulse = clock * 0.024;
+      if (roleRef.current === "guest" && ds.phase === "moving" && !ds.activeBlue) {
+        const frozen = guestFrozenMcnRef.current;
+        if (frozen != null && guestStopSentForEpochRef.current === ds.brickEpoch) {
+          toDraw = cloneStackUpState(ds);
+          toDraw.mcn = frozen;
+        } else {
+          const blend = cloneStackUpState(ds);
+          blend.mcn = guestMovingMcnSnapshot(ds, arenaWDraw);
+          toDraw = blend;
         }
       }
       drawScene(ctx, w, h, toDraw);
@@ -998,18 +1013,6 @@ export default function StackUp({
     el.muted = true;
     void el.play().catch(() => {});
   }, [showArena, opponentConnected]);
-
-  useEffect(() => {
-    if (!showArena) return;
-    const id = window.setInterval(() => {
-      const ph = getDrawState().phase;
-      if (ph === "countdown" || ph === "moving") {
-        void ensureVisionStack();
-      }
-      visionStep(performance.now());
-    }, 33);
-    return () => window.clearInterval(id);
-  }, [showArena]);
 
   const snapPhase = getDrawState().phase;
   const snapMatchEpoch = getDrawState().matchEpoch ?? 0;
@@ -1069,6 +1072,23 @@ export default function StackUp({
     router.push("/");
   }
 
+  const rulesBlock = (
+    <div className={styles.rulesBlock}>
+      <p className={styles.rulesLine}>
+        <strong>Blink or tap</strong> to stop the moving block.
+      </p>
+      <p className={styles.rulesLine}>
+        <strong>Stack</strong> each block on top of the last one.
+      </p>
+      <p className={styles.rulesLine}>
+        <strong>At least 10% overlap</strong> keeps you alive.
+      </p>
+      <p className={styles.rulesLine}>
+        <strong>Miss the stack</strong> and you lose.
+      </p>
+    </div>
+  );
+
   return (
     <div className={styles.shell}>
       <video ref={localVideoRef} className={styles.hidden} playsInline muted autoPlay />
@@ -1100,6 +1120,7 @@ export default function StackUp({
                 e.preventDefault();
                 tryStopRef.current();
               }}
+              onClick={() => tryStopRef.current()}
             >
               <div
                 className={
@@ -1115,8 +1136,8 @@ export default function StackUp({
                 style={{ opacity: centerInstrOpacity }}
                 aria-hidden
               >
-                <p className={styles.centerInstructionLine}>TAKE TURNS BLINKING OR TAPPING TO STOP</p>
-                <p className={styles.centerInstructionLine}>FIRST MISS LOSES</p>
+                <p className={styles.centerInstructionLine}>BLINK OR TAP TO STOP</p>
+                <p className={styles.centerInstructionLine}>SPACE BAR WORKS TOO</p>
               </div>
 
               {showFrameHud ? (
@@ -1143,6 +1164,10 @@ export default function StackUp({
               {net.phase === "countdown" ? (
                 <div className={styles.layerUi}>
                   <div className={styles.count}>{net.cd ?? 3}</div>
+                  <div className={styles.countdownRules} aria-hidden>
+                    <p className={styles.countdownRulesLine}>BLINK OR TAP TO STOP</p>
+                    <p className={styles.countdownRulesLine}>STACK · 10%+ OVERLAP TO SURVIVE</p>
+                  </div>
                 </div>
               ) : null}
 
@@ -1203,6 +1228,7 @@ export default function StackUp({
             <div className={styles.menuWrap}>
               <div className={styles.menuCard}>
                 <div className={styles.title}>Lobby</div>
+                {rulesBlock}
                 <p className={styles.sub}>Ready up — match starts when both players are ready.</p>
                 <p className={styles.subMuted}>
                   {opponentConnected

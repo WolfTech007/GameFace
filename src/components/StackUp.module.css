@@ -1,13 +1,16 @@
 .shell {
-  position: relative;
-  min-height: 100svh;
-  max-height: 100svh;
-  height: 100svh;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   background: #020204;
   color: rgba(255, 255, 255, 0.96);
+  overscroll-behavior: none;
 }
 
 .playerHudWrap {
@@ -22,6 +25,8 @@
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
+  max-height: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -140,6 +145,34 @@
   height: 100%;
   display: block;
   z-index: 2;
+}
+
+.countdownRules {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  z-index: 9;
+  width: min(92%, 300px);
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(4, 8, 16, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+.countdownRulesLine {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-align: center;
+  color: rgba(248, 250, 252, 0.95);
+  letter-spacing: 0.04em;
+}
+
+.countdownRulesLine:last-child {
+  margin-bottom: 0;
 }
 
 .centerInstruction {
@@ -342,18 +375,19 @@
 }
 
 .introLayer {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 24;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: max(12px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
-    max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   box-sizing: border-box;
   background: rgba(2, 6, 16, 0.35);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  overflow: hidden;
 }
 
 .menuWrap {
@@ -363,13 +397,14 @@
 }
 
 .lobbyLayer {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  overflow: hidden;
 }
 
 .lobbyLayer .menuWrap {
@@ -380,8 +415,34 @@
   background: rgba(4, 6, 12, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 16px;
-  padding: 16px;
+  padding: 14px;
+  max-height: min(72dvh, calc(100dvh - 120px));
+  overflow: hidden;
   backdrop-filter: blur(12px);
+}
+
+.rulesBlock {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+}
+
+.rulesLine {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.rulesLine:last-child {
+  margin-bottom: 0;
+}
+
+.rulesLine strong {
+  font-weight: 800;
+  color: #fff;
 }
 
 .title {
@@ -454,9 +515,11 @@
 }
 
 .hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 480px;
+  height: 640px;
   opacity: 0;
   pointer-events: none;
 }

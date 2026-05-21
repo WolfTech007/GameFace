@@ -30,6 +30,11 @@ import { hudPlainUsername, hudUsernameForRemote } from "@/lib/gameface/hudIdenti
 import { copyPrivateInviteLink } from "@/lib/gameface/privateInviteClipboard";
 import { PrivateInviteWaitModal } from "@/components/gameface/PrivateInviteWaitModal";
 import { startPrivateFriendChallenge, type PrivateMatchPayload } from "@/lib/gameface/privateRoomsClient";
+import {
+  formatStaringDurationMmSs,
+  readStaringContestBestSeconds,
+  recordStaringContestRound,
+} from "@/lib/staringContestBestTime";
 import gp from "@/components/gameface/gameplay/GameplaySurface.module.css";
 
 type Phase =
@@ -45,7 +50,13 @@ type Role = "host" | "guest";
 
 const GRACE_MS = 450;
 const FACE_LOSE_AFTER_MS = 1000;
-const BLINK_FRAMES = 3;
+/** Consecutive frames with eyes closed before a blink counts (reduces tracking glitches). */
+const BLINK_EAR_FRAMES = 7;
+/** Blendshape “eyes closed” must stay high this many frames. */
+const BLINK_BLEND_FRAMES = 6;
+const BLINK_BLEND_THRESHOLD = 0.48;
+/** Fraction of calibrated open-eye EAR; lower = must close more clearly. */
+const EAR_BLINK_RATIO = 0.5;
 const QUEUE_POLL_MS = 600;
 
 const VIDEO_DEBUG =
@@ -162,6 +173,8 @@ export default function StaringContest({
   const [warnFace, setWarnFace] = useState(false);
   const [endedWinner, setEndedWinner] = useState<boolean | null>(null);
   const [roundSeconds, setRoundSeconds] = useState(0);
+  const [bestSeconds, setBestSeconds] = useState(0);
+  const [newHighScore, setNewHighScore] = useState(false);
 
   const peerRef = useRef<any>(null);
   const dataRef = useRef<any>(null);
@@ -172,9 +185,9 @@ export default function StaringContest({
   const gameStartWallMsRef = useRef<number | null>(null);
   const earCalibRef = useRef<number[]>([]);
   const earThresholdRef = useRef(0.22);
-  const blinkSmootherRef = useRef(createBlinkSmoother(BLINK_FRAMES));
+  const blinkSmootherRef = useRef(createBlinkSmoother(BLINK_EAR_FRAMES));
   /** Blendshape “eyes closed” scores → streak above threshold (primary blink detector). */
-  const blinkBlendSmootherRef = useRef(createHighSignalSmoother(3, 0.38));
+  const blinkBlendSmootherRef = useRef(createHighSignalSmoother(BLINK_BLEND_FRAMES, BLINK_BLEND_THRESHOLD));
   const faceMissingSinceRef = useRef<number | null>(null);
   const pollTimerRef = useRef<number | null>(null);
   const privateAppliedRef = useRef(false);
@@ -438,6 +451,18 @@ export default function StaringContest({
     void applyMatch(privateMatch.peerRoomId, privateMatch.role, "");
   }, [privateMatch]);
 
+  useEffect(() => {
+    if (!clientId) return;
+    setBestSeconds(readStaringContestBestSeconds(clientId));
+  }, [clientId]);
+
+  function applyRoundScore(roundSec: number) {
+    if (!clientId) return;
+    const { bestSeconds: best, isNewHighScore } = recordStaringContestRound(clientId, roundSec);
+    setBestSeconds(best);
+    setNewHighScore(isNewHighScore);
+  }
+
   function resolveLoss(fromHost: boolean) {
     if (gameEndedRef.current) return;
     rematchIntentRef.current = emptyRematchIntent();
@@ -452,6 +477,7 @@ export default function StaringContest({
     const localIsHost = hostRoleRef.current === "host";
     setEndedWinner(winnerIsHost === localIsHost);
     setRoundSeconds(roundSec);
+    applyRoundScore(roundSec);
     setPhase("ended");
 
     sendNet({
@@ -476,6 +502,7 @@ export default function StaringContest({
     faceMissingSinceRef.current = null;
     setEndedWinner(null);
     setRoundSeconds(0);
+    setNewHighScore(false);
     setPlayingElapsedMs(0);
     setCountdownN(null);
     setWarnFace(false);
@@ -514,6 +541,7 @@ export default function StaringContest({
     faceMissingSinceRef.current = null;
     setEndedWinner(null);
     setRoundSeconds(0);
+    setNewHighScore(false);
     setPlayingElapsedMs(0);
     setCountdownN(null);
     setWarnFace(false);
@@ -544,6 +572,7 @@ export default function StaringContest({
     faceMissingSinceRef.current = null;
     setEndedWinner(null);
     setRoundSeconds(0);
+    setNewHighScore(false);
     setPlayingElapsedMs(0);
     setCountdownN(null);
     setWarnFace(false);
@@ -625,9 +654,9 @@ export default function StaringContest({
           setCountdownN(null);
           const med = median(earCalibRef.current);
           if (med > 0) {
-            earThresholdRef.current = Math.max(0.10, Math.min(0.34, med * 0.62));
+            earThresholdRef.current = Math.max(0.08, Math.min(0.3, med * EAR_BLINK_RATIO));
           } else {
-            earThresholdRef.current = 0.2;
+            earThresholdRef.current = 0.18;
           }
           const delay = Math.max(0, msg.startWallMs - Date.now());
           window.setTimeout(() => setPhase("playing"), delay);
@@ -639,6 +668,7 @@ export default function StaringContest({
           const localIsHost = hostRoleRef.current === "host";
           setEndedWinner(msg.winnerIsHost === localIsHost);
           setRoundSeconds(msg.roundSeconds);
+          applyRoundScore(msg.roundSeconds);
           setPhase("ended");
         }
         return;
@@ -773,7 +803,7 @@ export default function StaringContest({
 
       const med = median(earCalibRef.current);
       if (med > 0) {
-        earThresholdRef.current = Math.max(0.10, Math.min(0.34, med * 0.62));
+        earThresholdRef.current = Math.max(0.08, Math.min(0.3, med * EAR_BLINK_RATIO));
       }
 
       const startWallMs = Date.now() + GRACE_MS;
@@ -846,15 +876,22 @@ export default function StaringContest({
               const graceActive = startWallMs != null && wallNow < startWallMs + GRACE_MS;
               const blendAvg = avgEyeBlinkBlendshapeScore(res.faceBlendshapes);
               const blendBlink = blinkBlendSmootherRef.current.update(blendAvg);
+              const earOpenTh = earThresholdRef.current;
               const earBlink = blinkSmootherRef.current.update(ear, {
-                openThreshold: earThresholdRef.current,
+                openThreshold: earOpenTh,
               });
+              const deepClosure =
+                ear != null && ear < earOpenTh * 0.82;
+              const confirmedBlink =
+                blendBlink &&
+                earBlink.isLikelyBlink &&
+                deepClosure;
 
               if (
                 !graceActive &&
                 hostRoleRef.current &&
                 !gameEndedRef.current &&
-                (blendBlink || earBlink.isLikelyBlink)
+                confirmedBlink
               ) {
                 if (hostRoleRef.current === "host") resolveLoss(true);
                 else sendNet({ t: "blink", fromHost: false, atMs: Date.now() });
@@ -1086,7 +1123,17 @@ export default function StaringContest({
                     <div className={gp.resultDetail}>
                       Winner · {endedWinner ? displayLocalName : displayRemoteName}
                     </div>
-                    <div className={gp.resultDetail}>Time · {roundSeconds.toFixed(2)}s</div>
+                    <div className={gp.resultDetail}>
+                      Current Time: {formatStaringDurationMmSs(roundSeconds)}
+                    </div>
+                    <div className={gp.resultDetail}>
+                      Best Time: {formatStaringDurationMmSs(bestSeconds)}
+                    </div>
+                    {newHighScore ? (
+                      <div className={gp.resultTitle} style={{ marginTop: "8px", fontSize: "clamp(18px, 5vw, 24px)" }}>
+                        NEW HIGH SCORE
+                      </div>
+                    ) : null}
                     <RematchBar
                       iWantRematch={role === "host" ? rematchIntentRef.current.host : guestRematch.guest}
                       theyWantRematch={role === "host" ? rematchIntentRef.current.guest : guestRematch.host}

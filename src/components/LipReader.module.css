@@ -387,6 +387,15 @@
   }
 }
 
+/** Charades-only: wider framing inside the existing panes (no layout change). */
+.charadesVideo {
+  object-fit: contain !important;
+}
+
+.charadesVideoMirror {
+  object-fit: contain !important;
+}
+
 .swapTitle {
   font-size: clamp(26px, 9vw, 48px);
   font-weight: 950;

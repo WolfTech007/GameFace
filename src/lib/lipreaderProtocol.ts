@@ -1,4 +1,4 @@
-/** Lip Reader / Charades — host-authoritative co-op state (same team, two 60s clue segments). */
+/** Charades — host-authoritative co-op state (same team, two 60s clue segments). */
 
 export const LIP_READER_WORD_DECK = [
   "Pizza",

@@ -1,7 +1,7 @@
 "use client";
 
 import type { DataConnection } from "peerjs";
-import React, { useEffect, useReducer, useRef, useState } from "react";
+import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./LipReader.module.css";
 import {
@@ -178,6 +178,7 @@ export default function LipReader({
       localVideoRef.current.srcObject = stream;
       await localVideoRef.current.play();
     }
+    applyMicPolicy();
     return stream;
   }
 
@@ -228,6 +229,28 @@ export default function LipReader({
     const c = dataRef.current;
     if (c?.open) c.send(msg);
   }
+
+  /** Clue-giver (sees the word) is send-muted; guesser mic stays on. Re-applied each segment on role swap. */
+  const applyMicPolicy = useCallback(() => {
+    const stream = localStreamRef.current;
+    const remoteEl = remoteVideoRef.current;
+    const r = roleRef.current;
+    const s = gameStateRef.current;
+    if (!stream || !r) return;
+
+    const enforce = s.phase === "playing" || s.phase === "countdown";
+    const iAmCommunicator = r === "host" ? s.communicatorIsHost : !s.communicatorIsHost;
+    const opponentIsCommunicator = r === "host" ? !s.communicatorIsHost : s.communicatorIsHost;
+
+    const muteLocalOutgoing = enforce && iAmCommunicator;
+    for (const t of stream.getAudioTracks()) {
+      t.enabled = !muteLocalOutgoing;
+    }
+
+    if (remoteEl) {
+      remoteEl.muted = enforce && opponentIsCommunicator;
+    }
+  }, []);
 
   function hostHandleSkip() {
     const s = gameStateRef.current;
@@ -464,6 +487,7 @@ export default function LipReader({
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
           void remoteVideoRef.current.play();
+          applyMicPolicy();
         }
       });
     });
@@ -566,6 +590,7 @@ export default function LipReader({
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
           void remoteVideoRef.current.play();
+          applyMicPolicy();
         }
       });
     });
@@ -600,6 +625,7 @@ export default function LipReader({
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
         void remoteVideoRef.current.play();
+        applyMicPolicy();
       }
     });
   }
@@ -725,19 +751,8 @@ export default function LipReader({
     role === "host" ? gs.sessionRematch.guest : role === "guest" ? gs.sessionRematch.host : false;
 
   useEffect(() => {
-    const stream = localStreamRef.current;
-    if (!stream) return;
-    const audioTracks = stream.getAudioTracks();
-    const muteOutgoing = gs.phase === "playing" && iAmCommunicator;
-    for (const t of audioTracks) {
-      t.enabled = !muteOutgoing;
-    }
-    return () => {
-      for (const t of audioTracks) {
-        t.enabled = true;
-      }
-    };
-  }, [gs.phase, gs.communicatorIsHost, role, iAmCommunicator, opponentConnected]);
+    applyMicPolicy();
+  }, [applyMicPolicy, viewGen, role, opponentConnected, gs.phase, gs.communicatorIsHost, gs.segmentIndex]);
 
   useEffect(() => {
     if (gs.phase !== "playing") return;
@@ -836,7 +851,12 @@ export default function LipReader({
               </div>
             ) : null}
             <div className={`${gp.surfacePane} ${gp.surfacePaneOpponent}`}>
-              <video ref={remoteVideoRef} className={gp.surfaceFeed} playsInline autoPlay />
+              <video
+                ref={remoteVideoRef}
+                className={`${gp.surfaceFeed} ${styles.charadesVideo}`}
+                playsInline
+                autoPlay
+              />
             </div>
             {inSession && opponentConnected && (gs.phase === "playing" || gs.phase === "countdown") ? (
               <div className={gp.surfaceCenterHud} aria-live="polite">
@@ -858,7 +878,13 @@ export default function LipReader({
               </div>
             ) : null}
             <div className={`${gp.surfacePane} ${gp.surfacePaneYou}`}>
-              <video ref={localVideoRef} className={`${gp.surfaceFeed} ${gp.surfaceFeedMirror}`} playsInline muted autoPlay />
+              <video
+                ref={localVideoRef}
+                className={`${gp.surfaceFeed} ${gp.surfaceFeedMirror} ${styles.charadesVideoMirror}`}
+                playsInline
+                muted
+                autoPlay
+              />
             </div>
             {showWordToMe ? (
               <div className={gp.wordCard}>
@@ -870,7 +896,9 @@ export default function LipReader({
 
           {inSession && opponentConnected && gs.phase === "playing" ? (
             <div className={gp.hintFloat}>
-              {iAmCommunicator ? "Mic off while you clue — go big." : "Their mic is off while they clue — read their lips."}
+              {iAmCommunicator
+                ? "No mic while you clue — act it out."
+                : "Your mic is on — call out guesses."}
               {gs.guesserHint && iAmGuesser ? <span className={styles.hintNope}> {gs.guesserHint}</span> : null}
             </div>
           ) : null}
